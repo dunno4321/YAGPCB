@@ -27,14 +27,16 @@
 
 ## Commands
 
-### !addquote (VIPs/Mods only)
+### !addquote [quote] (VIPs/Mods only)
 - Adds a quote to the database. Stores quoter name, message, and date/time added
 - All data can be found in the quotes.json file
+- Syntax: !addquote [quote]
 
-### !quote (anyone)
-- Picks a random quote from the channel and displays it as follows:
+### !quote [num] (anyone)
+- Displays quote [num] from the channel as follows:
 - ```"{streamer} said '{msg}' on {added} (#{num}), as quoted by {quoter}"```
 - e.x. "dunno4321 said 'test1' on 10/13/23 (#1), as quoted by dunno4321"
+- If nothing is provided for [num], picks and displays a random quote
 
 ### !hello (anyone)
 - Says hello back!
@@ -45,3 +47,6 @@
 ### !ads (VIPs/Mods only)
 - Responds with a Github link with instructions on how to avoid ads on Twitch
 - The link in question: [https://github.com/pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions)
+
+### !help
+- Responds with the list of commands and their usages
