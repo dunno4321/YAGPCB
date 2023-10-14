@@ -3,14 +3,15 @@
 
 
 ## Installation
-1. [Install Python](https://www.python.org/downloads/release/python-3100/)
-2. [Install PIP](https://pip.pypa.io/en/stable/installation/). It should install with Python, but it's better to check
-3. Open File Explorer and navigate to this folder
-4. In the address bar, type "cmd"
-5. Type "python -m pip install -r requirements.txt". This will install the required libraries
-6. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
-7. In the command window opened above, type `python set_stuff.py` to start to configuration wizard
-8. Enter the client id, secret, and your channel name. All of this data is stored locally in config.json and only in config.json
+1. Download and install this by clicking code --> download ZIP --> extract to a known location
+2. [Install Python](https://www.python.org/downloads/release/python-3100/)
+3. [Install PIP](https://pip.pypa.io/en/stable/installation/). It should install with Python, but it's better to check
+4. Open File Explorer and navigate to this folder
+5. In the address bar, type "cmd"
+6. Type "python -m pip install -r requirements.txt". This will install the required libraries
+7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
+8. In the command window opened above, type `python set_stuff.py` to start to configuration wizard
+9. Enter the client id, secret, and your channel name. All of this data is stored locally in config.json and only in config.json
 
 ## Running the bot
 1. Open this folder in File Explorer
