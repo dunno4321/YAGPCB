@@ -1,0 +1,45 @@
+# YAGPTCB!
+#### Yet another general purpose Twitch chatbot made by dunno4321. For questions, DM @dunno4321 on Discord
+
+
+## Installation
+1. [Install Python](https://www.python.org/downloads/release/python-3100/)
+2. [Install PIP](https://pip.pypa.io/en/stable/installation/). It should install with Python, but it's better to check
+3. Open File Explorer and navigate to this folder
+4. In the address bar, type "cmd"
+5. Type "python -m pip install -r requirements.txt". This will install the required libraries
+6. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
+7. In the command window opened above, type `python set_stuff.py` to start to configuration wizard
+8. Enter the client id, secret, and your channel name. All of this data is stored locally in config.json and only in config.json
+
+## Running the bot
+1. Open this folder in File Explorer
+2. Type "cmd" into the address bar
+3. Type `python main.py` into the command prompt
+4. It will ask you to click the link to authorize the bot with Twitch
+5. Click the link and follow the instructions
+6. When you are done, you should see a "Successfully authorized!" message and you can close the tab. If not, DM me on Discord (@dunno4321) with a screenshot of the error and a copy of the program output
+7. The bot should now connect to Twitch and be in your chat. To test this, you should be able to type "!ping" and have the bot respond with "Pong!"
+8. The bot will also print some info once it is connected (username, user id, and which channel it is connected to)
+9. See Commands for usage
+
+## Commands
+
+### !addquote (VIPs/Mods only)
+- Adds a quote to the database. Stores quoter name, message, and date/time added
+- All data can be found in the quotes.json file
+
+### !quote (anyone)
+- Picks a random quote from the channel and displays it as follows:
+- ```"{streamer} said '{msg}' on {added} (#{num}), as quoted by {quoter}"```
+- e.x. "dunno4321 said 'test1' on 10/13/23 (#1), as quoted by dunno4321"
+
+### !hello (anyone)
+- Says hello back!
+
+### !ping (anyone)
+- Responds with Pong!
+
+### !ads (VIPs/Mods only)
+- Responds with a Github link with instructions on how to avoid ads on Twitch
+- The link in question: [https://github.com/pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions)
