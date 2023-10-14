@@ -12,8 +12,11 @@ has_token = False
 token_time = datetime.now() - timedelta(days=3)
 token = ""
 
-with open("config.json") as file:
-    config = json.load(file)
+try:
+    with open("config.json") as file:
+        config = json.load(file)
+except FileNotFoundError:
+    print("config.json not found, please run set_stuff.py with the command 'python set_stuff.py'")
 tmp = list(config.keys())
 tmp.sort()
 if tmp != ['channel', 'client_id', 'client_secret']:
@@ -86,8 +89,12 @@ def random_quote(ctx: commands.Context):
 
 def get_access_token():
     global has_token
-    with open("token.json") as file:
-        data = json.load(file)
+    try:
+        with open("token.json") as file:
+            data = json.load(file)
+    except FileNotFoundError:
+        # get a new token, mildly sketchy logic
+        data = {"expires_in": datetime.now() - timedelta(days=3)}
     # if the code will expire in less than an hour, get a new one
     if datetime.strptime(data["expires_in"], "%d/%m/%Y %H:%M:%S") < (datetime.now() + timedelta(hours=1)):
         print("Connect to twitch via this link:")
@@ -143,25 +150,72 @@ class Bot(commands.Bot):
         if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == "dunno4321" or ctx.author.name == ctx.channel.name:
             num_quotes = add_quote(ctx)
             await ctx.send(f"Successfully added quote #{num_quotes}")
+        else:
+            await ctx.send("<3 you dont have permission to use this command <3")
+
+    # @commands.command()
+    # async def quote(self, ctx: commands.Context):
+    #     await ctx.send(random_quote(ctx))
 
     @commands.command()
     async def quote(self, ctx: commands.Context):
-        await ctx.send(random_quote(ctx))
+        msg = ctx.message.content.strip().replace("\U000e0000", "")
+        args = msg.split(" ")[1:]
+        args = [item.strip() for item in args if len(item.strip()) > 0]
+        if len(args) != 0:
+            number = args[0]
+            try:
+                number = int(number)
+                if number <= 0:
+                    await ctx.send("Argument 'number' must be a number greater than 0!")
+                else:
+                    with open("quotes.json") as file:
+                        quotes = json.load(file)
+                    quotes = [quote for quote in quotes if quote["streamer"] == ctx.channel.name]
+                    if number > len(quotes):
+                        await ctx.send(f"Argument 'number' out of bounds! Only {len(quotes)} found!" if len(quotes) > 0 else "No quotes found!")
+                    else:
+                        await ctx.send(format_quote(quotes[number - 1]))
+            except Exception as e:
+                print(e)
+                await ctx.send("Argument 'number' is not a valid number!")
+        else:
+            await ctx.send(random_quote(ctx))
 
     @commands.command()
     async def ads(self, ctx: commands.Context):
         # https://github.com/pixeltris/TwitchAdSolutions
         if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             await ctx.send("https://github.com/pixeltris/TwitchAdSolutions")
+        else:
+            await ctx.send("<3 you dont have permission to use this command <3")
+
+    @commands.command()
+    async def help(self, ctx: commands.Context):
+        msg = """Commands:     
+!help: shows this  ||  
+!quote [num]: Shows quote [num] from this streamer. If no number is passed, shows a random quote  ||  
+!hello: says hello back  ||  
+!ping: Response with 'Pong!'"""
+        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+            msg += """  ||  
+!addquote [quote] (mods/vips only): Adds a quote. Format as: '!addquote {msg}' without quotation marks  ||  
+!ads (mods/vips only): Sends a link to a Github repository with instructions on how to block Twitch ads"""
+        await ctx.send(msg)
 
 
 app_thread = Thread(target=app.run, kwargs={"port": 3000, "host": "0.0.0.0"})
+bot = None
 try:
     app_thread.start()
     # allow time for the Flask info to get put to console before the link
-    time.sleep(1)
+    time.sleep(0.2)
     token = get_access_token()
+    time.sleep(1)
     bot = Bot(token, channels=[config["channel"]])
+    print("Attempting connection...")
     bot.run()
 except KeyboardInterrupt:
+    if bot is not None:
+        bot.close()
     app_thread.join(timeout=0)
