@@ -23,6 +23,7 @@
 7. The bot should now connect to Twitch and be in your chat. To test this, you should be able to type "!ping" and have the bot respond with "Pong!"
 8. The bot will also print some info once it is connected (username, user id, and which channel it is connected to)
 9. See Commands for usage
+10. To stop the bot, press ctrl+C twice or close Command Prompt
 
 ## Commands
 
