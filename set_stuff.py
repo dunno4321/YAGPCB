@@ -16,4 +16,5 @@ config["channel"] = input("Your channel name: ")
 
 with open("config.json", "w") as file:
     json.dump(config, file)
+
 print("Done! You should be able to run main.py with the command 'python main.py' now!")
