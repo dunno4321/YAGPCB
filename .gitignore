@@ -1,3 +1,4 @@
 .gitattributes
+.idea
 config.json
 token.json
