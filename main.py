@@ -196,7 +196,7 @@ class Bot(commands.Bot):
 !help: shows this  ||  
 !quote [num]: Shows quote [num] from this streamer. If no number is passed, shows a random quote  ||  
 !hello: says hello back  ||  
-!ping: Response with 'Pong!'"""
+!ping: Responds with 'Pong!'"""
         if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             msg += """  ||  
 !addquote [quote] (mods/vips only): Adds a quote. Format as: '!addquote {msg}' without quotation marks  ||  
