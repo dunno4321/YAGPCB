@@ -3,7 +3,7 @@
 
 
 ## Installation
-1. Download and install this by clicking code --> download ZIP --> extract to a known location
+1. Download and install this by clicking (on GitHub) code --> download ZIP, and extract it to a known location
 2. [Install Python](https://www.python.org/downloads/release/python-3100/)
 3. [Install PIP](https://pip.pypa.io/en/stable/installation/). It should install with Python, but it's better to check
 4. Open File Explorer and navigate to this folder
