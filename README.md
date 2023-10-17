@@ -3,15 +3,17 @@
 
 
 ## Installation
-1. Download and install this by clicking code --> download ZIP --> extract to a known location
+1. Download and install this by clicking (on GitHub) code --> download ZIP, and extract it to a known location
 2. [Install Python](https://www.python.org/downloads/release/python-3100/)
 3. [Install PIP](https://pip.pypa.io/en/stable/installation/). It should install with Python, but it's better to check
 4. Open File Explorer and navigate to this folder
 5. In the address bar, type "cmd"
 6. Type "python -m pip install -r requirements.txt" into Command Prompt. This will install the required libraries
+    - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
 7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
 8. Set "OAuth Redirect URL" to "http://localhost:3000"
 9. In the command window opened above, type `python set_stuff.py` to start to configuration wizard
+    - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
 10. Enter the client id, secret, and your channel name. All of this data is stored locally in config.json and only in config.json
 
 ## Running the bot
