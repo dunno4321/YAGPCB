@@ -27,6 +27,7 @@ def parse(url_):
         for item in params2:
             tmp = item.split("=")
             params[tmp[0]] = tmp[1]
+        logging.info(f"Parsed URL to: {params}")
         return params
     except Exception as e:
         logging.error("Error parsing URL: " + str(e))
@@ -88,7 +89,7 @@ def random_quote(ctx: commands.Context):
         tmp = json.load(file)
     tmp = [quote for quote in tmp if quote["streamer"] == streamer]
     if len(tmp) == 0:
-        logging.warn("No quotes found!")
+        logging.warning("No quotes found!")
     return format_quote(random.choice(tmp)) if len(tmp) > 0 else "No quotes found for this streamer!"
 
 
@@ -110,7 +111,10 @@ def get_access_token(config):
             "moderator:read:chatters",
             "chat:edit",
             "chat:read",
-            "moderator:manage:shoutouts"
+            "moderator:manage:shoutouts",
+            "channel:manage:polls",
+            "moderator:manage:chat_messages",
+            "channel:manage:broadcast"
         ]
         logging.info(f"Scopes: {', '.join(scopes)}")
         # print("""https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=28jexim9tw3g8u52evmlqbpob96ymn&redirect_uri=http://localhost:3000&scope=moderator%3Aread%3Achatters%2Bchat%3Aedit%2Bchat%3Aread&state=c3ab8aa609ea11e793ae92361f002671""")
@@ -166,10 +170,31 @@ class Bot(commands.Bot):
         self._config = config
         self._token = get_access_token(config)
         print("Attempting connection...")
+        logging.info("Attempting connection...")
         # sometimes a new token needs a second to actually work :3
         time.sleep(5)
         super().__init__(token=self._token, prefix="!", initial_channels=channels)
         self._user = self._get_user(config["channel"])
+        self._active = True
+        self._chatters_checked_at = datetime.now() - timedelta(hours=1)
+        # self._thread = Thread(target=self._worker_thread)
+        # self._thread.start()
+
+    def _worker_thread(self):
+        while self._active:
+            now = datetime.now()
+            # add chatter points
+            if (now - self._chatters_checked_at) > timedelta(minutes=5):
+                chatters = self._get(f"https://api.twitch.tv/helix/chat/chatters?broadcaster_id={self._config['channel']}&moderator_id={self.user_id}&first=1000")
+                with open("points.json") as file:
+                    data = json.load(file)
+                # structure: {chatter: points}
+                keys = list(data.keys())
+                for chatter in chatters:
+                    if chatter in keys:
+                        data[chatter] += 5
+                    else:
+                        data[chatter] = 5
 
     def _get(self, url):
         logging.debug(f"Getting url: {url}")
@@ -184,6 +209,7 @@ class Bot(commands.Bot):
             return self.create_user(data["id"], data["display_name"])
         except IndexError:
             # user does not exist
+            logging.error(f"USer {username} does not exist!")
             return None
 
     async def event_ready(self):
@@ -197,7 +223,6 @@ class Bot(commands.Bot):
     @commands.command()
     async def hello(self, ctx: commands.Context):
         logging.info(f"!hello called by {ctx.author.name}")
-        # cheese
         await ctx.send(f'Hello {ctx.author.name}!')
 
     @commands.command()
@@ -218,10 +243,6 @@ class Bot(commands.Bot):
         else:
             logging.info(f"{ctx.author.name} does not have permission to use this command!")
             await ctx.send("<3 you dont have permission to use this command <3")
-
-    # @commands.command()
-    # async def quote(self, ctx: commands.Context):
-    #     await ctx.send(random_quote(ctx))
 
     @commands.command()
     async def quote(self, ctx: commands.Context):
@@ -256,7 +277,7 @@ class Bot(commands.Bot):
     async def ads(self, ctx: commands.Context):
         # https://github.com/pixeltris/TwitchAdSolutions
         logging.info(f"!ads called by {ctx.author.name}")
-        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             await ctx.send("https://github.com/pixeltris/TwitchAdSolutions")
         else:
             await ctx.send("<3 you dont have permission to use this command <3")
@@ -271,14 +292,13 @@ class Bot(commands.Bot):
 !ping: Responds with 'Pong!'"""
         if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             msg += """  ||  
-!addquote [quote] (mods/vips only): Adds a quote. Format as: '!addquote {msg}' without quotation marks  ||  
-!ads (mods/vips only): Sends a link to a Github repository with instructions on how to block Twitch ads"""
+!addquote [quote] (mods/vips only): Adds a quote. Format as: '!addquote {msg}' without quotation marks"""
         await ctx.send(msg)
 
     @commands.command(aliases=["so"])
     async def shoutout(self, ctx: commands.Context, streamer: str):
         logging.info(f"!shoutout called by {ctx.author.name} to {streamer}")
-        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             streamer = streamer.strip().replace("@", "")
             user = self._get_user(streamer)
             if user is not None:
@@ -298,6 +318,56 @@ class Bot(commands.Bot):
         else:
             logging.warning(f"User {ctx.author.name} does not have permission to use !shoutout !")
             await ctx.send("<3 you dont have permission to use this command <3")
+
+    @commands.command()
+    async def game(self, ctx: commands.Context):
+        try:
+            msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
+            logging.info(f"!game called by {ctx.author.name}")
+            if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+                categories = await self.search_categories(msg)
+                if len(categories) > 0:
+                    url = f"https://api.twitch.tv/helix/channels?broadcaster_id={self._user.id}"
+                    headers = {
+                        "Authorization": f"Bearer {self._token}",
+                        "Client-Id": self._config["client_id"],
+                        "Content-Type": "application/json"
+                    }
+                    res = requests.patch(url, headers=headers, json={"game_id": categories[0].id})
+                    if res.status_code == 204:
+                        await ctx.send(f"Successfully updated game to {categories[0].name}")
+                    else:
+                        logging.error(f"Got status code {res.status_code}")
+                else:
+                    await ctx.send(f"Game '{game}' not found")
+            else:
+                logging.warning(f"User {ctx.author.name} does not have permission to use !game !")
+                await ctx.send("<3 you dont have permission to use this command <3")
+        except ValueError:
+            await ctx.send("Please specify a game!")
+
+    @commands.command()
+    async def title(self, ctx: commands.Context):
+        try:
+            msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
+            logging.info(f"!title called by {ctx.author.name}")
+            if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+                url = f"https://api.twitch.tv/helix/channels?broadcaster_id={self._user.id}"
+                headers = {
+                    "Authorization": f"Bearer {self._token}",
+                    "Client-Id": self._config["client_id"],
+                    "Content-Type": "application/json"
+                }
+                res = requests.patch(url, headers=headers, json={"title": msg})
+                if res.status_code == 204:
+                    await ctx.send(f"Successfully updated title to '{msg}'")
+                else:
+                    logging.error(f"Got status code != 204: {res.status_code}")
+            else:
+                logging.warning(f"User {ctx.author.name} does not have permission to use !game !")
+                await ctx.send("<3 you dont have permission to use this command <3")
+        except ValueError:
+            await ctx.send("Please specify a title!")
 
 
 app_thread = Thread(target=app.run, kwargs={"port": 3000, "host": "0.0.0.0"})

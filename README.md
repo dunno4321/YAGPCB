@@ -31,13 +31,14 @@
 ### !addquote [quote] (VIPs/Mods only)
 - Adds a quote to the database. Stores quoter name, message, and date/time added
 - All data can be found in the quotes.json file
-- Syntax: !addquote [quote]
+- Syntax: `!addquote [quote]`
 
 ### !quote [num] (anyone)
 - Displays quote [num] from the channel as follows:
 - ```"{streamer} said '{msg}' on {added} (#{num}), as quoted by {quoter}"```
 - e.x. "dunno4321 said 'test1' on 10/13/23 (#1), as quoted by dunno4321"
 - If nothing is provided for [num], picks and displays a random quote
+- Syntax: `!quote [num]`
 
 ### !hello (anyone)
 - Says hello back!
@@ -45,9 +46,28 @@
 ### !ping (anyone)
 - Responds with Pong!
 
-### !ads (VIPs/Mods only)
+### !ads (Mods only)
 - Responds with a Github link with instructions on how to avoid ads on Twitch
 - The link in question: [https://github.com/pixeltris/TwitchAdSolutions](https://github.com/pixeltris/TwitchAdSolutions)
 
 ### !help
 - Responds with the list of commands and their usages
+
+### !so [user] / !shoutout [user] (Mods only)
+- Shouts out a user
+- Syntax: `!so [user]`
+
+### !title [title] (Mods only)
+- Sets the stream title
+- Syntax: `!title [title]`
+
+### !game [game] (Mods only)
+- Sets the game Twitch displays
+- Syntax: `!game [game]`
+
+## Debugging
+- Check log.log and/or DM me on Discord with the log file
+
+## Todos:
+- Web UI for configuration
+- Option for auto polls like "is audio good?"
