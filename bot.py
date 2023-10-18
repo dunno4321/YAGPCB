@@ -79,8 +79,25 @@ class Bot(commands.Bot):
         self._active = True
         self._token_data = None
         self._chatters_checked_at = datetime.now() - timedelta(hours=1)
+        self._moderators = self._get_moderators()
+        self._vips = self._get_vips()
+        self._cheated_n_times = 0
         # self._thread = Thread(target=self._worker_thread)
         # self._thread.start()
+
+    def _get_vips(self):
+        res = self._get(f"https://api.twitch.tv/helix/channels/vips?broadcaster_id={self._user.id}")
+        try:
+            return [vip["user_login"] for vip in res["data"]]
+        except KeyError:
+            print(res)
+
+    def _get_moderators(self):
+        res = self._get(f"https://api.twitch.tv/helix/moderation/moderators?broadcaster_id={self._user.id}")
+        try:
+            return [mod["user_login"] for mod in res["data"]]
+        except KeyError:
+            print(res)
 
     def refresh_token(self):
         logging.info("Refreshing access token...")
@@ -118,7 +135,9 @@ class Bot(commands.Bot):
                 "moderator:manage:shoutouts",
                 "channel:manage:polls",
                 "moderator:manage:chat_messages",
-                "channel:manage:broadcast"
+                "channel:manage:broadcast",
+                "moderation:read",
+                "channel:read:vips"
             ]
             logging.info(f"Scopes: {', '.join(scopes)}")
             # print("""https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=28jexim9tw3g8u52evmlqbpob96ymn&redirect_uri=http://localhost:3000&scope=moderator%3Aread%3Achatters%2Bchat%3Aedit%2Bchat%3Aread&state=c3ab8aa609ea11e793ae92361f002671""")
@@ -201,7 +220,9 @@ class Bot(commands.Bot):
     @commands.command()
     async def addquote(self, ctx: commands.Context):
         logging.info(f"!addquote called by {ctx.author.name}")
-        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        # if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        user = ctx.message.author.name
+        if user in self._moderators or user in self._vips or user == ctx.channel.name:
             num_quotes = add_quote(ctx)
             logging.info(f"Added quote #{num_quotes}")
             await ctx.send(f"Successfully added quote #{num_quotes}")
@@ -242,7 +263,8 @@ class Bot(commands.Bot):
     async def ads(self, ctx: commands.Context):
         # https://github.com/pixeltris/TwitchAdSolutions
         logging.info(f"!ads called by {ctx.author.name}")
-        if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        user = ctx.message.author.name
+        if user in self._moderators or user == ctx.channel.name:
             await ctx.send("https://github.com/pixeltris/TwitchAdSolutions")
         else:
             await ctx.send("<3 you dont have permission to use this command <3")
@@ -263,7 +285,8 @@ class Bot(commands.Bot):
     @commands.command(aliases=["so"])
     async def shoutout(self, ctx: commands.Context, streamer: str):
         logging.info(f"!shoutout called by {ctx.author.name} to {streamer}")
-        if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        user = ctx.message.author.name
+        if user in self._moderators or user == ctx.channel.name:
             streamer = streamer.strip().replace("@", "")
             user = self._get_user(streamer)
             if user is not None:
@@ -289,7 +312,8 @@ class Bot(commands.Bot):
         try:
             msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
             logging.info(f"!game called by {ctx.author.name}")
-            if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+            user = ctx.message.author.name
+            if user in self._moderators or user == ctx.channel.name:
                 categories = await self.search_categories(msg)
                 if len(categories) > 0:
                     url = f"https://api.twitch.tv/helix/channels?broadcaster_id={self._user.id}"
@@ -313,7 +337,8 @@ class Bot(commands.Bot):
 
     @commands.command()
     async def title(self, ctx: commands.Context):
-        if ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
+        user = ctx.message.author.name
+        if user in self._moderators or user == ctx.channel.name:
             try:
                 msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
                 logging.info(f"!title called by {ctx.author.name}")
@@ -333,3 +358,17 @@ class Bot(commands.Bot):
         else:
             logging.warning(f"User {ctx.author.name} does not have permission to use !game !")
             await ctx.send("<3 you dont have permission to use this command <3")
+
+    @commands.command(aliases=("cheat", "cheats"))
+    async def cheater(self, ctx: commands.Context):
+        try:
+            with open("assets/misc_data.json") as file:
+                data = json.load(file)
+        except FileNotFoundError:
+            data = {"cheats_total": 0}
+        data["cheats_total"] += 1
+        self._cheated_n_times += 1
+        with open("assets/misc_data.json", "w") as file:
+            json.dump(data, file)
+        await ctx.send(f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
+
