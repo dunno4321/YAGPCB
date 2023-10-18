@@ -194,16 +194,15 @@ class Bot(commands.Bot):
 
     @commands.command()
     async def ping(self, ctx: commands.Context):
-        logging.info(f"!pong called by {ctx.author.name}")
+        logging.info(f"!ping called by {ctx.author.name}")
         # pong
         await ctx.send(f'Pong!')
 
     @commands.command()
     async def addquote(self, ctx: commands.Context):
         logging.info(f"!addquote called by {ctx.author.name}")
-        # if you see this I'll remove it :]
         if ctx.author.badges.get("vip") or ctx.author.badges.get(
-                "mod") or ctx.author.name == "dunno4321" or ctx.author.name == ctx.channel.name:
+                "mod") or ctx.author.name == ctx.channel.name:
             num_quotes = add_quote(ctx)
             logging.info(f"Added quote #{num_quotes}")
             await ctx.send(f"Successfully added quote #{num_quotes}")
