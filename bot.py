@@ -371,4 +371,3 @@ class Bot(commands.Bot):
         with open("assets/misc_data.json", "w") as file:
             json.dump(data, file)
         await ctx.send(f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
-
