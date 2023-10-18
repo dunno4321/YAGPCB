@@ -67,8 +67,30 @@
 - Sets the game Twitch displays
 - Syntax: `!game [game]`
 
+### !cheater (Mods/VIPs only)
+- Increments a counter both for total cheats & cheats this stream
+- Syntax: `!cheater`
+
+### !add_command [command] [return] (Mods only)
+- Aliases: !addcmd, !add_cmd
+- Adds a custom command that will put [return] in chat when called
+- Syntax: `!addcmd [command] [return]`
+- Example:
+  - > `!addcmd twitter follow me on twitter @dunno4321`
+  - > `Successfully added command!`
+  - > `!twitter`
+  - > `follow me on twitter @dunno4321`
+
+### !remove_command [command] (Mods only)
+- Aliases: !remove_cmd
+- Removes a custom command
+- Syntax: `!remove_cmd [command]`
+- Example:
+  - > `!remove_cmd twitter`
+  - > `Succesfully removed command twitter`
+
 ## Debugging
-- Check log.log and/or DM me on Discord with the log file
+- Check log.log (do a ctrl+f for "error") and/or DM me on Discord with the log file
 
 ## Todos:
 - Web UI for configuration

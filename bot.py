@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 from twitchio.ext import commands
+from twitchio import Message
 import requests
 import logging
 import random
@@ -45,7 +46,6 @@ def add_quote(ctx: commands.Context):
 
 
 class Bot(commands.Bot):
-    # TODO: update token in twitchio
     def __init__(self, config_file, token_callback, channels=None):
         try:
             with open(config_file) as file:
@@ -74,7 +74,8 @@ class Bot(commands.Bot):
         logging.info("Attempting connection...")
         # sometimes a new token needs a second to actually work :3
         time.sleep(5)
-        super().__init__(token=self._token, prefix="!", initial_channels=channels, client_secret=config["client_secret"])
+        super().__init__(token=self._token, prefix="!", initial_channels=channels,
+                         client_secret=config["client_secret"])
         self._user = self._get_user(config["channel"])
         self._active = True
         self._token_data = None
@@ -84,6 +85,31 @@ class Bot(commands.Bot):
         self._cheated_n_times = 0
         # self._thread = Thread(target=self._worker_thread)
         # self._thread.start()
+        with open("assets/misc_data.json") as file:
+            self._misc_data = json.load(file)
+
+    #         for command in self._misc_data["commands"]:
+#             name = command[0]
+#             bruh = f"""
+# async def {command[0]}(ctx: commands.Context):
+#     await ctx.send('{" ".join(command[1]) if isinstance(command[1], list) else command[1]}')
+#             """
+#             exec(bruh, globals())
+#             print(command[0])
+#
+#             tmp = commands.Command(name.title(), command[0])
+#             self.add_command(tmp)
+#             print(f"Added command {command[0]} with return {command[1]}")
+
+    async def event_message(self, message: Message):
+        msg = message.content.strip()
+        if msg.startswith("!"):
+            cmd = msg.split()[0].replace("!", "")
+            if cmd in list(self._misc_data["commands"].keys()):
+                logging.info(f"Custom command {cmd} called by {message.author.name}")
+                await message.channel.send(self._misc_data["commands"][cmd])
+            else:
+                await self.handle_commands(message)
 
     def _get_vips(self):
         res = self._get(f"https://api.twitch.tv/helix/channels/vips?broadcaster_id={self._user.id}")
@@ -106,7 +132,8 @@ class Bot(commands.Bot):
                                  data=f"grant_type=refresh_token&refresh_token={self._token_data['refresh_token']}&client_id={self._config['client_id']}&client_secret={self._config['client_secret']}")
         if response.status_code >= 400:
             print(f"Failed to refresh token (HTTP code {response.status_code}, https://http.cat/{response.status_code}")
-            logging.error(f"Failed to refresh token (HTTP code {response.status_code}, https://http.cat/{response.status_code}")
+            logging.error(
+                f"Failed to refresh token (HTTP code {response.status_code}, https://http.cat/{response.status_code}")
         else:
             data = response.json()
             self._token_data["access_token"] = data["access_token"]
@@ -361,13 +388,64 @@ class Bot(commands.Bot):
 
     @commands.command(aliases=("cheat", "cheats"))
     async def cheater(self, ctx: commands.Context):
+        logging.info(f"!cheater called by {ctx.message.author.name}")
+        if ctx.message.author.name in self._moderators or ctx.message.author.name in self._vips or ctx.author.name == ctx.channel.name:
+            try:
+                with open("assets/misc_data.json") as file:
+                    data = json.load(file)
+            except FileNotFoundError:
+                data = {"cheats_total": 0}
+            data["cheats_total"] += 1
+            self._cheated_n_times += 1
+            with open("assets/misc_data.json", "w") as file:
+                json.dump(data, file)
+            await ctx.send(
+                f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
+        else:
+            logging.warning(f"{ctx.message.author.name} does not have permission to use !cheater")
+            await ctx.send("<3 you don't have permission to use this command <3")
+
+    @commands.command(aliases=("addcommand", "add_command", "add_cmd"))
+    async def addcmd(self, ctx: commands.Context):
+        logging.info(f"!add_command called by {ctx.author.name}")
         try:
-            with open("assets/misc_data.json") as file:
-                data = json.load(file)
-        except FileNotFoundError:
-            data = {"cheats_total": 0}
-        data["cheats_total"] += 1
-        self._cheated_n_times += 1
-        with open("assets/misc_data.json", "w") as file:
-            json.dump(data, file)
-        await ctx.send(f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
+            msg = ctx.message.content
+            cmd_name = msg.split()[1]
+            return_ = msg.split()[2:]
+            if ctx.author.name in self._moderators or ctx.author.name == ctx.channel.name:
+                self._misc_data["commands"][cmd_name] = " ".join(return_)
+
+                with open("assets/misc_data.json", "w") as file:
+                    json.dump(self._misc_data, file)
+
+                await ctx.send(f"Successfully added command {cmd_name}")
+            else:
+                logging.warning(f"{ctx.author.name} does not have permission to add commands")
+                await ctx.send("<3 you don't have permission to use this command <3")
+        except Exception as e:
+            logging.error(f"Failed to add command: {str(e)}")
+            await ctx.send("Failed to add command")
+
+    # the (, ) is formatting so Pycharm doesn't freak out
+    @commands.command(aliases=("remove_command", ))
+    async def remove_cmd(self, ctx: commands.Context):
+        logging.info(f"!remove_cmd called by {ctx.author.name}")
+        try:
+            msg = ctx.message.content
+            cmd_name = msg.split()[1]
+            if ctx.author.name in self._moderators or ctx.author.name == ctx.channel.name:
+                try:
+                    del self._misc_data["commands"][cmd_name]
+                except KeyError:
+                    pass
+
+                with open("assets/misc_data.json", "w") as file:
+                    json.dump(self._misc_data, file)
+
+                await ctx.send(f"Successfully removed command {cmd_name}")
+            else:
+                logging.warning(f"{ctx.author.name} does not have permission to add commands")
+                await ctx.send("<3 you don't have permission to use this command <3")
+        except Exception as e:
+            logging.error(f"Failed to add command: {str(e)}")
+            await ctx.send("Failed to remove command")
