@@ -201,8 +201,7 @@ class Bot(commands.Bot):
     @commands.command()
     async def addquote(self, ctx: commands.Context):
         logging.info(f"!addquote called by {ctx.author.name}")
-        if ctx.author.badges.get("vip") or ctx.author.badges.get(
-                "mod") or ctx.author.name == ctx.channel.name:
+        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
             num_quotes = add_quote(ctx)
             logging.info(f"Added quote #{num_quotes}")
             await ctx.send(f"Successfully added quote #{num_quotes}")
