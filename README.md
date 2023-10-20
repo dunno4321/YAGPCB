@@ -12,8 +12,10 @@
     - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
 7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
 8. Set "OAuth Redirect URL" to "http://localhost:3000/token"
-9. In the command window opened above, type `python set_stuff.py` to start to configuration wizard
-    - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
+9. To connect with twitch, do one of the following:
+  - In the command window opened above, type `python set_stuff.py` to start to configuration wizard
+       - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
+  - OR run the bot with `python main.py` and navigate to http://localhost:3000 in your web browser
 10. Enter the client id, secret, and your channel name. All of this data is stored locally in config.json and only in config.json
 
 ## Running the bot
@@ -27,6 +29,7 @@
 8. The bot will also print some info once it is connected (username, user id, and which channel it is connected to)
 9. See Commands for usage
 10. To stop the bot, press ctrl+C twice or close Command Prompt
+11. (optional) go to [http://localhost:3000](http://localhost:3000) to view the configuration page
 
 ## Commands
 
@@ -93,5 +96,6 @@
 - Check log.log (do a ctrl+f for "error") and/or DM me on Discord with the log file
 
 ## Todos:
-- Web UI for configuration
+- Web UI for configuration (in progress)
+  - Move Flask app inside of bot.py to be run with Bot (when done)
 - Option for auto polls like "is audio good?"

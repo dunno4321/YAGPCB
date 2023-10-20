@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html>
+<style>
+body, html {
+  font-family: arial, sans-serif;
+}
+table {
+  font-family: arial, sans-serif;
+  border-collapse: collapse;
+  width: 100%;
+}
+
+td, th {
+  border: 1px solid #dddddd;
+  text-align: left;
+  padding: 8px;
+}
+
+tr:nth-child(even) {
+  background-color: #dddddd;
+}
+
+input {
+  margin: 2px 0;
+}
+
+a {
+  margin: 5px 0;
+}
+</style>
+<script>
+function send_(item) {
+    var element = document.getElementById(item);
+    fetch("http://localhost:3000/update_data?"+item+"="+element.checked, {"headers": {"Access-Control-Allow-Origin": "*"}}).then((response)=> {
+        console.log(response);
+    });
+}
+
+function save_data() {
+    var client_id = document.getElementById("client_id");
+    var client_secret = document.getElementById("client_secret");
+    var channel = document.getElementById("channel");
+    var url = "http://localhost:3000/set_client_config?client_id=" + client_id.value + "&client_secret=" + client_secret.value + "&channel=" + channel.value;
+    fetch(url, {"headers": {"Access-Control-Allow-Origin": "*"}}).then((response)=> {
+        console.log(response);
+    });
+    alert("Config updated, please restart the bot to use");
+}
+</script>
+<head>
+<title>YAGBTCB config page</title>
+</head>
+<body>
+
+<h1>YAGPTCB config</h1>
+<a href="/log">View log file</a><br>
+Client ID: <input id="client_id" value="{{client_id}}"><br>
+Client Secret: <input id="client_secret" value="{{client_secret}}"><br>
+Channel name: <input id="channel" value="{{channel}}"><br>
+<button id="set_config" onclick="save_data()">Save</button>
+
+<p>Default commands</p>
+<table>
+<thead>
+  <tr>
+    <th>Enabled</th>
+    <th>Command</th>
+    <th>Description</th>
+  </tr>
+</thead>
+<tbody>
+{% for row in default_commands %}
+    <tr>
+      <td>{{ row['checkbox']|safe }} </td>
+      <td>{{ row['name'] }}</td>
+      <td>{{ row['description']|safe }}</td>
+    </tr>
+{% endfor %}
+</tbody>
+</table>
+<p>Custom commands</p>
+<p>Custom commands override default commands (e.g. adding a !ads with return "Subscribe to the channel to remove ads" would override the default return of "<a href="https://github.com/pixeltris/TwitchAdSolutions">https://github.com/pixeltris/TwitchAdSolutions</a>")</p>
+<table>
+<thead>
+  <tr>
+    <th>Enabled</th>
+    <th>Command</th>
+    <th>Return value</th>
+  </tr>
+</thead>
+<tbody>
+{% for row in custom_commands %}
+    <tr>
+      <td>{{ row['checkbox']|safe }}</td>
+      <td>{{ row['name'] }}</td>
+      <td>{{ row['return'] }}</td>
+    </tr>
+{% endfor %}
+</tbody>
+</table>
+</body>
+</html>
