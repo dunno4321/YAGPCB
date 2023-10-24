@@ -96,9 +96,14 @@
 - Go to [http://localhost:3000](http://localhost:3000) for the web configuration
 - Options:
   - Set client id, secret, and channel
+  - ![img.png](readme_pics/img.png)
   - add/remove repeating messages/polls
+    - ![img_1.png](readme_pics/img_1.png)
+    - ![img_2.png](readme_pics/img_2.png)
   - enable/disable default commands
+    - ![img_3.png](readme_pics/img_3.png)
   - enable/disable custom commands
+  - ![img_4.png](readme_pics/img_4.png)
 
 ## Debugging
 - Check log.log (do a ctrl+f for "error") and/or DM me on Discord with the log file
