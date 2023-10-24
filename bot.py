@@ -1,9 +1,10 @@
-from server import ConfigData, start_server
+from server import ConfigData, start_server, clean
 from datetime import datetime, timedelta
 from twitchio.ext import commands
 from twitchio import Message
 from threading import Thread
 import requests
+import asyncio
 import logging
 import random
 import json
@@ -66,6 +67,8 @@ def add_quote(ctx: commands.Context):
 class Bot(commands.Bot):
     def __init__(self, config_file, channels=None):
         start_server()
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
         try:
             with open(config_file) as file:
                 config = json.load(file)
@@ -104,6 +107,8 @@ class Bot(commands.Bot):
         time.sleep(5)
         super().__init__(token=self._token, prefix="!", initial_channels=channels,
                          client_secret=config["client_secret"])
+        self._channel = None
+        self._connected = False
         self._user = self._get_user(config["channel"])
         self._active = True
         self._chatters_checked_at = datetime.now() - timedelta(hours=1)
@@ -114,6 +119,9 @@ class Bot(commands.Bot):
         self._thread.start()
         with open("assets/misc_data.json") as file:
             self._misc_data = json.load(file)
+        now = datetime.now()
+        for task in self._misc_data["repeating_tasks"]:
+            task["next_occurrence"] = (now + timedelta(minutes=task["data"]["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
         self._default_cmds_list = [item["name"] for item in self._misc_data["default_commands"]]
         print("Connected! Config page: http://localhost:3000")
 
@@ -234,8 +242,10 @@ class Bot(commands.Bot):
     def _worker_thread(self):
         while self._active:
             now = datetime.now()
+
             if abs((now - datetime.strptime(self._token_data["expires_in"], "%d/%m/%Y %H:%M:%S")).total_seconds()) < 120:
                 self.refresh_token()
+
             ConfigData.data_from_botpy = self._misc_data
             if ConfigData.new_update_req:
                 cmd_name = list(ConfigData.update_req_data.keys())[0]
@@ -246,6 +256,66 @@ class Bot(commands.Bot):
                     self.disable_command(cmd_name)
                 ConfigData.new_update_req = False
                 ConfigData.botpy_config_data = self._config
+
+            if ConfigData.new_repeating_task:
+                data = ConfigData.new_task_data
+                logging.info(f"New repeating task: {data}")
+                ConfigData.new_repeating_task = False
+                # TODO: input validation :3
+                self._misc_data["repeating_tasks"].append({
+                    "type": data["type"],
+                    "frequency": int(data["freq_val"]),
+                    "data": data,
+                    "next_occurrence": (now + timedelta(minutes=data["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
+                })
+                logging.info(self._misc_data["repeating_tasks"])
+                with open("assets/misc_data.json", "w") as file:
+                    json.dump(self._misc_data, file, indent=2)
+
+            if ConfigData.remove_repeating_task:
+                tmp = self._misc_data["repeating_tasks"]
+                tmp2 = []
+                name = clean(ConfigData.remove_task_name)
+                for item in tmp:
+                    item_name = item["data"]["msg_body"] if item["type"] == "msg" else item["data"]["title"]
+                    if clean(item_name) != name:
+                        tmp2.append(item)
+                # tmp = [item for item in tmp if clean(item["data"]["msg_body"] if item["type"] == "msg" else item["data"]["title"] != clean(ConfigData.remove_task_name))]
+                self._misc_data["repeating_tasks"] = tmp2
+                with open("assets/misc_data.json", "w") as file:
+                    json.dump(self._misc_data, file, indent=2)
+                ConfigData.remove_repeating_task = False
+
+            for task in self._misc_data["repeating_tasks"]:
+                time_ = datetime.strptime(task["next_occurrence"], "%d/%m/%Y %H:%M:%S")
+                data = task["data"]
+                if (now - time_).total_seconds() > 0:
+                    logging.info("doing repeating task with data:", data)
+                    if task["type"] == "poll":
+                        """
+                        title: title
+                        options: options
+                        c_points_enabled: true/false
+                        c_points_per_vote: int
+                        """
+                        self.create_poll(data["title"], data["options"], channel_points=data["c_points_enabled"], points_per_vote=data["c_points_per_vote"], duration=data["duration"])
+                    else:
+                        """
+                        msg_body: content
+                        """
+                        self._send_message(data["msg_body"])
+                    task["next_occurrence"] = (now + timedelta(minutes=data["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
+                    logging.info("next: " + task["next_occurrence"])
+
+            ConfigData.tasks = self._misc_data["repeating_tasks"]
+
+    def _send_message(self, content):
+        if self._connected:
+            if self._channel is None:
+                self._channel = self.get_channel(self._config["channel"])
+            self._loop.create_task(self._channel.send(content))
+        else:
+            logging.warning("Cannot send message because not connected yet :3")
 
     def _get(self, url):
         logging.debug(f"Getting url: {url}")
@@ -273,6 +343,7 @@ class Bot(commands.Bot):
         print(f'Logged in as @{self.nick}')
         print(f'User id is {self.user_id}')
         print(f"Connected to these channels: {[channel.name for channel in self.connected_channels]}")
+        self._connected = True
 
     @commands.command()
     async def hello(self, ctx: commands.Context):
@@ -574,3 +645,19 @@ class Bot(commands.Bot):
             json.dump(self._misc_data, file, indent=2)
         logging.info(f"Disabled command: {cmd_name}")
 
+    def create_poll(self, title: str, options: list, channel_points=False, points_per_vote=0, duration=120):
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Client-Id": self._config["client_id"],
+            "Content-Type": "application/json",
+        }
+        data = {
+            "broadcaster_id": self._user.id,
+            "title": title,
+            "choices": [{"title": option} for option in options],
+            "channel_points_voting_enabled": channel_points,
+            "channel_points_per_vote": points_per_vote,
+            "duration": duration,
+        }
+        response = requests.post('https://api.twitch.tv/helix/polls', headers=headers, json=data)
+        return response.status_code

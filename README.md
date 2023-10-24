@@ -92,10 +92,18 @@
   - > `!remove_cmd twitter`
   - > `Succesfully removed command twitter`
 
+### Web dashboard
+- Go to [http://localhost:3000](http://localhost:3000) for the web configuration
+- Options:
+  - Set client id, secret, and channel
+  - add/remove repeating messages/polls
+  - enable/disable default commands
+  - enable/disable custom commands
+
 ## Debugging
 - Check log.log (do a ctrl+f for "error") and/or DM me on Discord with the log file
 
 ## Todos:
-- Web UI for configuration (in progress)
-  - Move Flask app inside of bot.py to be run with Bot (when done)
-- Option for auto polls like "is audio good?"
+- Web UI for configuration (done)
+  - Move Flask app inside of bot.py to be run with bot.Bot (done)
+- Option for auto polls like "is audio good?" (done)

@@ -31,9 +31,7 @@ a {
 <script>
 function send_(item) {
     var element = document.getElementById(item);
-    fetch("http://localhost:3000/update_data?"+item+"="+element.checked, {"headers": {"Access-Control-Allow-Origin": "*"}}).then((response)=> {
-        console.log(response);
-    });
+    fetch("http://localhost:3000/update_data?"+item+"="+element.checked, {"headers": {"Access-Control-Allow-Origin": "*"}});
 }
 
 function save_data() {
@@ -41,62 +39,358 @@ function save_data() {
     var client_secret = document.getElementById("client_secret");
     var channel = document.getElementById("channel");
     var url = "http://localhost:3000/set_client_config?client_id=" + client_id.value + "&client_secret=" + client_secret.value + "&channel=" + channel.value;
-    fetch(url, {"headers": {"Access-Control-Allow-Origin": "*"}}).then((response)=> {
-        console.log(response);
-    });
+    fetch(url, {"headers": {"Access-Control-Allow-Origin": "*"}});
     alert("Config updated, please restart the bot to use");
+}
+
+function update_repeating_section() {
+    var which = document.getElementById("which_one").value;
+    if (which == "repeating poll") {
+        document.getElementById("poll_div").hidden = false;
+        document.getElementById("msg_div").hidden = true;
+    } else {
+        document.getElementById("poll_div").hidden = true;
+        document.getElementById("msg_div").hidden = false;
+    }
+}
+
+function channel_points_onclick() {
+    var enabled = document.getElementById("channel_points_enabled").checked;
+    if (enabled) {
+        document.getElementById("channel_points_div").hidden = false;
+    } else {
+        document.getElementById("channel_points_div").hidden = true;
+    }
+}
+
+function add_item() {
+    var newOption = document.createElement("input");
+    newOption.className = "poll_options";
+
+    var elements = document.getElementsByClassName("poll_options");
+    newOption.placeholder = "Option " + (elements.length + 1);
+
+    document.getElementById("poll_options").appendChild(newOption);
+    var newSpace = document.createElement("br");
+    newSpace.className = "poll_breaks"
+    document.getElementById("poll_options").appendChild(newSpace);
+}
+
+function remove_item() {
+    var elements = document.getElementsByClassName("poll_options");
+    var linebreaks = document.getElementsByClassName("poll_breaks");
+    if (elements.length > 2) {
+        elements[elements.length - 1].remove();
+        linebreaks[linebreaks.length - 1].remove();
+    }
+}
+
+function submit_poll() {
+    var frequency_value = document.getElementById("frequency").value;
+    var frequency_unit = document.getElementById("frequency_units").value;
+    var title = document.getElementById("poll_title").value;
+    var options = document.getElementsByClassName("poll_options");
+    var channel_points_enabled = document.getElementById("channel_points_enabled").checked;
+    var channel_points_per_vote = document.getElementById("channel_points_amt").value;
+    var duration = document.getElementById("poll_duration").value;
+    if (title == "") {
+        alert("Please set a poll title!");
+        return;
+    }
+    if (frequency_value == "") {
+        alert("Please set poll frequency!");
+        return;
+    }
+    var counter = 0;
+    var options_text = [];
+    while (counter < options.length) {
+        if (options[counter].value == "") {
+            alert("Empty value for one or more of the options, please remove or set value");
+            return;
+        }
+        options_text[counter] = options[counter].value;
+        counter++;
+    }
+    data = {
+        "freq_val": frequency_value,
+        "freq_units": frequency_unit,
+        "title": title,
+        "options": options_text,
+        "c_points_enabled": channel_points_enabled,
+        "c_points_per_vote": channel_points_per_vote,
+        "duration": duration
+    }
+    fetch("http://localhost:3000/poll", {
+        method: "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+}
+
+var letters = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM".split("");
+function clean(text) {
+    var builder = "";
+    for (let i = 0; i < text.length; i++) {
+        if (letters.includes(text[i])) {
+            builder += text[i];
+        }
+    }
+    return builder;
+}
+
+function submit_msg() {
+    var content = document.getElementById("msg_body").value;
+    var frequency_value = document.getElementById("frequency").value;
+    var frequency_unit = document.getElementById("frequency_units").value;
+    if (content == "") {
+        alert("Please set message content!");
+        return;
+    }
+    if (frequency_value == "") {
+        alert("Please set message frequency!");
+        return;
+    }
+    data = {
+        "freq_val": frequency_value,
+        "freq_units": frequency_unit,
+        "msg_body": content
+    }
+    fetch("http://localhost:3000/msg", {
+        method: "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify(data)
+    });
+}
+
+async function get_repeating() {
+    var tmp = await fetch("http://localhost:3000/get_repeating");
+    return await tmp.json()
+}
+
+async function remove_repeating_task(name) {
+    var tmp = await fetch("http://localhost:3000/remove_repeating", {
+        method: "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({"name": name})
+    });
+    tmp = await tmp.json();
+    if (!tmp["success"]) {
+        alert("Failed to remove repeating task! Message: " + tmp["message"]);
+        return;
+    } else {
+        name = name.replace(" ", "_");
+        var table_element = document.getElementById(clean(name));
+        table_element.remove();
+        alert("Removed successfully")
+    }
+}
+
+async function add_or_remove_changed() {
+    var is_add = document.getElementById("add_or_remove").value == "Add";
+    var add_div = document.getElementById("add_option_chosen");
+    var add_elements = document.getElementsByClassName("only_add");
+    var remove_div = document.getElementById("remove_option_chosen");
+    var remove_table = document.getElementById("repeating_table");
+    var every_text = document.getElementById("every_text_bruh");
+    var stuff = document.getElementById("stuff");
+    var counter = 0;
+    if (is_add) {
+        every_text.style = "display:inline";
+        add_div.hidden = false;
+        remove_div.hidden = true;
+        while (counter < add_elements.length) {
+            add_elements[counter].hidden = false;
+            counter++;
+        }
+        stuff.style = "display:none";
+    } else {
+        stuff.style = "display:inline";
+        every_text.style = "display:none";
+        add_div.hidden = true;
+        remove_div.hidden = false;
+        while (counter < add_elements.length) {
+            add_elements[counter].hidden = true;
+            counter++;
+        }
+        for (const child of remove_table.children) {
+            // >:3
+            child.remove();
+        }
+        stuff.hidden = false;
+
+        bruh = await get_repeating();
+        var counter = 0;
+        while (counter < bruh.length) {
+            var item = bruh[counter];
+            const tmp = document.createElement("tr");
+            tmp.id = clean(item["name"]);
+            const remove_btn = document.createElement("button");
+            const tmp2 = item["name"]
+            remove_btn.onclick = function() {
+                // bruh :3
+                remove_repeating_task(tmp2);
+            }
+            remove_btn.innerHTML = "Remove task";
+
+            const content = item["name"];
+            const type = item["type"];
+            const frequency = item["data"]["freq_val"];
+
+            const content_element = document.createElement("td");
+            const type_element = document.createElement("td");
+            const frequency_element = document.createElement("td");
+
+            content_element.innerHTML = content;
+            type_element.innerHTML = type;
+            frequency_element.innerHTML = frequency;
+
+            tmp.appendChild(remove_btn);
+            tmp.appendChild(content_element);
+            tmp.appendChild(type_element);
+            tmp.appendChild(frequency_element);
+            remove_table.appendChild(tmp);
+            counter++;
+        }
+        // stfu this is the only way i got it to work
+        // i know its bad
+        // im bad at html ok
+        // i use real programming languages
+        // :3
+        var bruuuuuh = []
+        for (const child of remove_table.children) {
+            // >:3
+            if (bruh.includes(child.id)) {
+                child.remove();
+            } else {
+                bruh.push(child.id);
+            }
+        }
+    }
 }
 </script>
 <head>
-<title>YAGBTCB config page</title>
+<title>YAGBCB config page</title>
 </head>
 <body>
 
-<h1>YAGPTCB config</h1>
+<h1>YAGPCB config</h1>
 <a href="/log">View log file</a><br>
-Client ID: <input id="client_id" value="{{client_id}}"><br>
-Client Secret: <input id="client_secret" value="{{client_secret}}"><br>
-Channel name: <input id="channel" value="{{channel}}"><br>
-<button id="set_config" onclick="save_data()">Save</button>
+<div id="config">
+    <h3>Client config</h3>
+    Client ID: <input id="client_id" value="{{client_id}}"><br>
+    Client Secret: <input id="client_secret" value="{{client_secret}}"><br>
+    Channel name: <input id="channel" value="{{channel}}"><br>
+    <button id="set_config" onclick="save_data()">Save</button>
+</div>
 
-<p>Default commands</p>
-<table>
-<thead>
-  <tr>
-    <th>Enabled</th>
-    <th>Command</th>
-    <th>Description</th>
-  </tr>
-</thead>
-<tbody>
-{% for row in default_commands %}
-    <tr>
-      <td>{{ row['checkbox']|safe }} </td>
-      <td>{{ row['name'] }}</td>
-      <td>{{ row['description']|safe }}</td>
-    </tr>
-{% endfor %}
-</tbody>
-</table>
-<p>Custom commands</p>
-<p>Custom commands override default commands (e.g. adding a !ads with return "Subscribe to the channel to remove ads" would override the default return of "<a href="https://github.com/pixeltris/TwitchAdSolutions">https://github.com/pixeltris/TwitchAdSolutions</a>")</p>
-<table>
-<thead>
-  <tr>
-    <th>Enabled</th>
-    <th>Command</th>
-    <th>Return value</th>
-  </tr>
-</thead>
-<tbody>
-{% for row in custom_commands %}
-    <tr>
-      <td>{{ row['checkbox']|safe }}</td>
-      <td>{{ row['name'] }}</td>
-      <td>{{ row['return'] }}</td>
-    </tr>
-{% endfor %}
-</tbody>
-</table>
+<div id="add_repeating_tasks">
+<!--    end result: [add/remove] a [repeating poll/repeating/message] every [input] [minutes/hours]-->
+    <h3>Add repeating tasks</h3>
+    <select id="add_or_remove" onchange="add_or_remove_changed()">
+        <option id="add">Add</option>
+        <option id="remove">Remove</option>
+    </select>
+    a <p id="stuff" style="display:none">repeating task</p>
+    <select id="which_one" onchange="update_repeating_section()" class="only_add">
+        <option id="poll">repeating poll</option>
+        <option id="message">repeating message</option>
+    </select>
+    <p style="display:inline" id="every_text_bruh">that repeats every </p>
+    <input id="frequency" class="only_add" type="number" placeholder="5" size=6 min="0" max="59">
+    <select id="frequency_units" class="only_add">
+        <option id="minutes">minutes</option>
+        <option id="hours">hours</option>
+    </select>
+    <div id="add_option_chosen">
+        <div id="poll_div">
+            Poll title:
+            <input id="poll_title" placeholder="Heads/tails?"><br>
+            Options:<br>
+            <div id="poll_options">
+                <input class="poll_options" placeholder="heads"><br class="poll_breaks">
+                <input class="poll_options" placeholder="tails"><br class="poll_breaks">
+            </div>
+            <button id="add_item" onclick="add_item()">add</button>
+            <button id="remove_item" onclick="remove_item()">remove</button>
+            <br>
+            <input type="checkbox" id="channel_points_enabled" onclick="channel_points_onclick()">  allow chatters to vote with channel points<br>
+            <div id="channel_points_div" hidden>
+                each vote costs <input id="channel_points_amt" type="number" size=6 placeholder="100"> channel points
+            </div>
+            Duration (seconds): <input id="poll_duration" type="number" size="6" placeholder="120">
+            <br>
+            <button id="submit_poll" onclick="submit_poll()">add poll</button>
+        </div>
+
+        <div id="msg_div" hidden="">
+            Message: <input id="msg_body" placeholder="Subscribe to remove ads!" style="margin: 5px 0px"><br>
+            <button id="submit_msg" onclick="submit_msg()">add message</button>
+        </div>
+    </div>
+    <div id="remove_option_chosen" hidden="">
+        <table id="current_repeating">
+            <thead>
+                <tr>
+                    <th>Remove</th>
+                    <th>Message content/poll title</th>
+                    <th>Type</th>
+                    <th>Frequency (minutes)</th>
+                </tr>
+            </thead>
+            <tbody id="repeating_table">
+                <!-- populated dynamically :3 -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div id="commands">
+    <h3>Command Configuration</h3>
+    <p>Default commands</p>
+    <table>
+    <thead>
+      <tr>
+        <th>Enabled</th>
+        <th>Command</th>
+        <th>Description</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in default_commands %}
+        <tr>
+          <td>{{ row['checkbox']|safe }} </td>
+          <td>{{ row['name'] }}</td>
+          <td>{{ row['description']|safe }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+    </table>
+    <p>Custom commands</p>
+    <p>Custom commands override default commands (e.g. adding !ads with return "Subscribe to the channel to remove ads" would override the default return of "<a href="https://github.com/pixeltris/TwitchAdSolutions">https://github.com/pixeltris/TwitchAdSolutions</a>")</p>
+    <table>
+    <thead>
+      <tr>
+        <th>Enabled</th>
+        <th>Command</th>
+        <th>Return value</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for row in custom_commands %}
+        <tr>
+          <td>{{ row['checkbox']|safe }}</td>
+          <td>{{ row['name'] }}</td>
+          <td>{{ row['return'] }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+    </table>
+</div>
 </body>
 </html>

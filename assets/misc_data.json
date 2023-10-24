@@ -24,7 +24,7 @@
     },
     {
       "name": "ads",
-      "enabled": true,
+      "enabled": false,
       "description": "Links <a href=\"https://github.com/pixeltris/TwitchAdSolutions\" target=\"_blank\">twitchadsolutions</a> in the chat (mods only)"
     },
     {
@@ -61,6 +61,19 @@
       "name": "remove_command",
       "enabled": true,
       "description": "Removes [command] (argument 1) from the custom commands list (mods only)"
+    }
+  ],
+  "repeating_tasks": [
+    {
+      "type": "msg",
+      "frequency": 0,
+      "data": {
+        "freq_val": 0.5,
+        "freq_units": "minutes",
+        "msg_body": "repeating message final test",
+        "type": "msg"
+      },
+      "next_occurrence": "24/10/2023 17:34:03"
     }
   ]
 }
