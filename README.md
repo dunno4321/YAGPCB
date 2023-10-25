@@ -11,7 +11,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 5. In the address bar, type "cmd"
 6. Type "python -m pip install -r requirements.txt" into Command Prompt. This will install the required libraries
     - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
-7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client secret`
+7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client_secret`
 8. Set "OAuth Redirect URL" to "http://localhost:3000/token"
 9. To connect with twitch, do one of the following:
   - In the command window opened above, type `python set_stuff.py` to start to configuration wizard
