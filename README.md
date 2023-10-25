@@ -3,6 +3,7 @@
 
 
 ## Installation
+You can either follow these steps to build & run it OR go to the Releases tab and download YAGPCB.exe
 1. Download and install this by clicking (on GitHub) code --> download ZIP, and extract it to a known location
 2. [Install Python](https://www.digitalocean.com/community/tutorials/install-python-windows-10)
 3. [Install PIP](https://www.geeksforgeeks.org/how-to-install-pip-on-windows/#). It should install with Python, but it's better to check
