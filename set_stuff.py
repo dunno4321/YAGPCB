@@ -14,7 +14,7 @@ config["client_id"] = input("Client ID: ").strip()
 config["client_secret"] = input("Client secret: ").strip()
 config["channel"] = input("Your channel name: ").strip()
 
-with open("assets/client_config.json", "w") as file:
+with open("./assets/client_config.json", "w") as file:
     json.dump(config, file)
 
 print("Done! You should be able to run main.py with the command 'python main.py' now!")

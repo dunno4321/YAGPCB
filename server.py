@@ -4,6 +4,7 @@ from flask_cors import CORS
 import logging
 import json
 import copy
+import os
 
 app = Flask(__name__)
 CORS(app)
@@ -52,7 +53,7 @@ def token():
     if "code" in list(params.keys()):
         ConfigData.has_code = True
         ConfigData.code = params["code"]
-        with open("assets/token.json", "w") as file:
+        with open("./assets/token.json", "w") as file:
             json.dump(params, file)
         logging.info("Successfully got token!")
         return "Successfully authorized!"
@@ -78,7 +79,7 @@ def home():
 
         return render_template("index.html", default_commands=default, custom_commands=custom, **ConfigData.botpy_config_data)
     else:
-        with open("assets/misc_data.json") as file:
+        with open("./assets/misc_data.json") as file:
             data = json.load(file)
         default = copy.deepcopy(data["default_commands"])
         custom = copy.deepcopy(data["custom_commands"])
@@ -109,15 +110,15 @@ def scuffed_updated_config():
 def update_client_config():
     logging.info("Request on " + request.url)
     params = parse(request.url)
-    keys = list(params.keys())
-    with open("assets/client_config.json") as file:
-        data = json.load(file)
-    # there are faster ways to do this but this way should avoid the ability to put extra data info client_config.json
-    for tmpkey in ["client_id", "client_secret", "channel"]:
-        if tmpkey in keys:
-            data[tmpkey] = params[tmpkey]
-    with open("assets/client_config.json", "w") as file:
-        json.dump(data, file)
+    # keys = list(params.keys())
+    # with open("./assets/client_config.json") as file:
+    #     data = json.load(file)
+    # # there are faster ways to do this but this way should avoid the ability to put extra data info client_config.json
+    # for tmpkey in ["client_id", "client_secret", "channel"]:
+    #     if tmpkey in keys:
+    #         data[tmpkey] = params[tmpkey]
+    with open("./assets/client_config.json", "w") as file:
+        json.dump(params, file)
     logging.info("Client config updated")
     print("Client config updated, restart the bot to use updated config")
     return "yoinked"
@@ -134,7 +135,7 @@ def clean(text):
 
 @app.route("/log")
 def log_file():
-    with open("assets/log.log") as file:
+    with open("./assets/log.log") as file:
         return file.read().replace("\n", "<br><br>")
 
 

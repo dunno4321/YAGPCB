@@ -30,7 +30,7 @@ def parse(url_):
 def random_quote(ctx: commands.Context):
     logging.info(f"Getting random quote for streamer {ctx.channel.name}")
     streamer = ctx.channel.name
-    with open("assets/quotes.json") as file:
+    with open("./assets/quotes.json") as file:
         tmp = json.load(file)
     tmp = [quote for quote in tmp if quote["streamer"] == streamer]
     if len(tmp) == 0:
@@ -44,7 +44,7 @@ def format_quote(quote):
 
 def add_quote(ctx: commands.Context):
     logging.info(f"Adding quote for streamer {ctx.channel.name}")
-    with open("assets/quotes.json") as file:
+    with open("./assets/quotes.json") as file:
         tmp = json.load(file)
         tmp = [item for item in tmp if item["streamer"] == ctx.channel.name]
 
@@ -59,7 +59,7 @@ def add_quote(ctx: commands.Context):
 
     tmp.append(data)
 
-    with open("assets/quotes.json", "w") as file:
+    with open("./assets/quotes.json", "w") as file:
         json.dump(tmp, file, indent=2)
     return len(tmp)
 
@@ -69,22 +69,29 @@ class Bot(commands.Bot):
         start_server()
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
+        self._wait_for_flask = False
         try:
             with open(config_file) as file:
                 config = json.load(file)
         except FileNotFoundError:
             logging.error(f"{config_file} not found!")
-            raise Exception(f"{config_file} not found, please run set_stuff.py with the command 'python set_stuff.py'")
+            config = {"channel": "", "client_id": "", "client_secret": ""}
+            self._wait_for_flask = True
         tmp = list(config.keys())
         tmp.sort()
-        self._wait_for_flask = False
         if tmp != ['channel', 'client_id', 'client_secret']:
+            config = {"channel": "", "client_id": "", "client_secret": ""}
             with open(config_file, "w") as file:
-                json.dump({"client_id": "", "client_secret": "", "channel": ""}, file, indent=2)
+                json.dump(config, file, indent=2)
             self._wait_for_flask = True
         if config["channel"] == "" or config["client_id"] == "" or config["client_secret"] == "":
             logging.error("Default config detected, will wait for Flask input...")
             self._wait_for_flask = True
+
+        with open("./assets/misc_data.json") as file:
+            # if you see this, i've spent the last hour trying to get this into a nice .exe file
+            # im just fixing stupid errors dude
+            self._misc_data = json.load(file)
 
         self._has_token = False
 
@@ -117,7 +124,7 @@ class Bot(commands.Bot):
         self._cheated_n_times = 0
         self._thread = Thread(target=self._worker_thread)
         self._thread.start()
-        with open("assets/misc_data.json") as file:
+        with open("./assets/misc_data.json") as file:
             self._misc_data = json.load(file)
         now = datetime.now()
         for task in self._misc_data["repeating_tasks"]:
@@ -176,7 +183,7 @@ class Bot(commands.Bot):
             self._token_data["access_token"] = data["access_token"]
             self._token_data["refresh_token"] = data["refresh_token"]
             self._token_data["expires_in"] = (datetime.now() + timedelta(hours=3.5)).strftime("%d/%m/%Y %H:%M:%S")
-            with open("assets/token.json", "w") as file:
+            with open("./assets/token.json", "w") as file:
                 json.dump(self._token_data, file, indent=2)
             self._token = data["access_token"]
             logging.info("Successfully refreshed token!")
@@ -184,15 +191,32 @@ class Bot(commands.Bot):
     def get_access_token(self, callback):
         try:
             logging.info("Attempting to get a previous token...")
-            with open("assets/token.json") as file:
+            with open("./assets/token.json") as file:
                 data = json.load(file)
                 self._token_data = data
+            if data == {}:
+                data = {"access_token": ""}
         except FileNotFoundError:
             # get a new token, mildly sketchy logic
             logging.info("token.json not found, creating...")
             data = {"access_token": ""}
-        # if the code will expire in less than an hour, get a new one
-        if data["access_token"] == "" or "refresh_token" not in list(data.keys()):
+        if "code" in list(data.keys()):
+            response = requests.post("https://id.twitch.tv/oauth2/token",
+                                     data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={token}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token").json()
+            try:
+                response["expires_in"] = (datetime.now() + timedelta(seconds=response["expires_in"] - 60))
+                self._token_data = response
+                response["expires_in"] = response["expires_in"].strftime("%d/%m/%Y %H:%M:%S")
+                with open("./assets/token.json", "w") as file:
+                    json.dump(response, file, indent=2)
+
+                return response["access_token"]
+            except Exception as e:
+                logging.error(f"Error getting token: {str(e)}")
+                logging.error("Most likely invalid client id/secret")
+                raise Exception(
+                    f"Error getting token: {str(e)}. Check your client_id and client_secret in client_config.json!")
+        elif data["access_token"] == "" or "refresh_token" not in list(data.keys()):
             print("Connect to twitch via this link:")
             scopes = [
                 "moderator:read:chatters",
@@ -223,10 +247,8 @@ class Bot(commands.Bot):
                 response["expires_in"] = (datetime.now() + timedelta(seconds=response["expires_in"] - 60))
                 self._token_data = response
                 response["expires_in"] = response["expires_in"].strftime("%d/%m/%Y %H:%M:%S")
-                with open("assets/token.json", "w") as file:
+                with open("./assets/token.json", "w") as file:
                     json.dump(response, file, indent=2)
-
-                logging.info(f"New token acquired: {token}")
                 return token
             except Exception as e:
                 logging.error(f"Error getting token: {str(e)}")
@@ -269,7 +291,7 @@ class Bot(commands.Bot):
                     "next_occurrence": (now + timedelta(minutes=data["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
                 })
                 logging.info(self._misc_data["repeating_tasks"])
-                with open("assets/misc_data.json", "w") as file:
+                with open("./assets/misc_data.json", "w") as file:
                     json.dump(self._misc_data, file, indent=2)
 
             if ConfigData.remove_repeating_task:
@@ -282,7 +304,7 @@ class Bot(commands.Bot):
                         tmp2.append(item)
                 # tmp = [item for item in tmp if clean(item["data"]["msg_body"] if item["type"] == "msg" else item["data"]["title"] != clean(ConfigData.remove_task_name))]
                 self._misc_data["repeating_tasks"] = tmp2
-                with open("assets/misc_data.json", "w") as file:
+                with open("./assets/misc_data.json", "w") as file:
                     json.dump(self._misc_data, file, indent=2)
                 ConfigData.remove_repeating_task = False
 
@@ -396,7 +418,7 @@ class Bot(commands.Bot):
                     logging.error(f"{number} must be greater than 0!")
                     await ctx.send("Argument 'number' must be a number greater than 0!")
                 else:
-                    with open("assets/quotes.json") as file:
+                    with open("./assets/quotes.json") as file:
                         quotes = json.load(file)
                     quotes = [quote for quote in quotes if quote["streamer"] == ctx.channel.name]
                     if number > len(quotes):
@@ -540,13 +562,13 @@ class Bot(commands.Bot):
                 await ctx.send("Command disabled by streamer")
                 return
             try:
-                with open("assets/misc_data.json") as file:
+                with open("./assets/misc_data.json") as file:
                     data = json.load(file)
             except FileNotFoundError:
                 data = {"cheats_total": 0}
             data["cheats_total"] += 1
             self._cheated_n_times += 1
-            with open("assets/misc_data.json", "w") as file:
+            with open("./assets/misc_data.json", "w") as file:
                 json.dump(data, file, indent=2)
             await ctx.send(
                 f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
@@ -567,7 +589,7 @@ class Bot(commands.Bot):
                 return_ = msg.split()[2:]
                 self._misc_data["custom_commands"].append({"name": cmd_name, "return": " ".join(return_), "enabled": True})
 
-                with open("assets/misc_data.json", "w") as file:
+                with open("./assets/misc_data.json", "w") as file:
                     json.dump(self._misc_data, file, indent=2)
 
                 await ctx.send(f"Successfully added command {cmd_name}")
@@ -598,7 +620,7 @@ class Bot(commands.Bot):
                 except IndexError:
                     pass
 
-                with open("assets/misc_data.json", "w") as file:
+                with open("./assets/misc_data.json", "w") as file:
                     json.dump(self._misc_data, file, indent=2)
 
                     await ctx.send(f"Successfully removed command {cmd_name}")
@@ -623,7 +645,7 @@ class Bot(commands.Bot):
                 self._misc_data["custom_commands"][index]["enabled"] = False
             except ValueError:
                 logging.error("Command not found")
-        with open("assets/misc_data.json", "w") as file:
+        with open("./assets/misc_data.json", "w") as file:
             json.dump(self._misc_data, file, indent=2)
         logging.info(f"Disabled command: {cmd_name}")
 
@@ -641,7 +663,7 @@ class Bot(commands.Bot):
                 self._misc_data["custom_commands"][index]["enabled"] = True
             except ValueError:
                 logging.error("Command not found")
-        with open("assets/misc_data.json", "w") as file:
+        with open("./assets/misc_data.json", "w") as file:
             json.dump(self._misc_data, file, indent=2)
         logging.info(f"Disabled command: {cmd_name}")
 
