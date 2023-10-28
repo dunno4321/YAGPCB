@@ -1,348 +1,132 @@
-from server import ConfigData, start_server, clean
 from datetime import datetime, timedelta
+
+import twitchio
 from twitchio.ext import commands
-from twitchio import Message
 from threading import Thread
+import tracemalloc
+import webbrowser
 import requests
-import asyncio
 import logging
+import asyncio
 import random
+import server
 import json
-import time
 
 
-def parse(url_):
-    logging.debug("Parsing URL: " + url_)
-    try:
-        url_ = url_[url_.rfind("?") + 1:]
-        params2 = url_.split("&")
-        params = {}
-        for item in params2:
-            tmp = item.split("=")
-            params[tmp[0]] = tmp[1]
-        logging.info(f"Parsed URL to: {params}")
-        return params
-    except Exception as e:
-        logging.error("Error parsing URL: " + str(e))
-        return {}
+# allow for some better error tracing
+tracemalloc.start()
+date_time_fmt = "%d/%m/%Y %H:%M:%S"
+date_fmt = "%d/%m/%Y"
 
 
-def random_quote(ctx: commands.Context):
-    logging.info(f"Getting random quote for streamer {ctx.channel.name}")
-    streamer = ctx.channel.name
-    with open("./assets/quotes.json") as file:
-        tmp = json.load(file)
-    tmp = [quote for quote in tmp if quote["streamer"] == streamer]
+def dump_token(token):
+    # token["expires_in"] = (datetime.now() + timedelta(seconds=(int(token["expires_in"]) - 120))).strftime(fmt)
+    with open("./assets/token.json", "w") as file:
+        json.dump(token, file, indent=2)
+
+
+def random_quote(quotes, streamer):
+    tmp = [quote for quote in quotes if quote["streamer"] == streamer]
     if len(tmp) == 0:
         logging.warning("No quotes found!")
     return format_quote(random.choice(tmp)) if len(tmp) > 0 else "No quotes found for this streamer!"
 
 
 def format_quote(quote):
-    return f"{quote['streamer']} said '{quote['msg']}' on {quote['added']} (#{quote['num']}), as quoted by {quote['quoter']}"
-
-
-def add_quote(ctx: commands.Context):
-    logging.info(f"Adding quote for streamer {ctx.channel.name}")
-    with open("./assets/quotes.json") as file:
-        tmp = json.load(file)
-        tmp = [item for item in tmp if item["streamer"] == ctx.channel.name]
-
-    msg = ctx.message.content
-    data = {
-        "quoter": ctx.message.author.name,
-        "msg": msg[msg.find(" ") + 1:].replace('"', "").strip(),
-        "num": len(tmp) + 1,
-        "added": datetime.now().strftime("%m/%d/%Y"),
-        "streamer": ctx.channel.name
-    }
-
-    tmp.append(data)
-
-    with open("./assets/quotes.json", "w") as file:
-        json.dump(tmp, file, indent=2)
-    return len(tmp)
+    return f"{quote['streamer']} said '{quote['quote']}' on {quote['date']} (#{quote['num']}), as quoted by {quote['quoter']}"
 
 
 class Bot(commands.Bot):
-    def __init__(self, config_file, channels=None):
-        start_server()
+    default_config = {"client_id": "", "client_secret": "", "channel": ""}
+
+    def __init__(self, config_file):
+        with open(config_file) as file:
+            self._config = json.load(file)
+        with open("./assets/token.json") as file:
+            self._token_data = json.load(file)
+            self._token = None
+        with open("./assets/quotes.json") as file:
+            self._quotes = json.load(file)
+        self.logger = logging.getLogger("bot")
+        self.logger.setLevel(logging.DEBUG)
+        self._scopes = [
+            "moderator:read:chatters",
+            "chat:edit",
+            "chat:read",
+            "moderator:manage:shoutouts",
+            "channel:manage:polls",
+            "moderator:manage:chat_messages",
+            "channel:manage:broadcast",
+            "moderation:read",
+            "channel:read:vips",
+            "moderator:manage:chat_settings",
+            "moderator:manage:announcements"
+        ]
+
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
-        self._wait_for_flask = False
-        try:
-            with open(config_file) as file:
-                config = json.load(file)
-        except FileNotFoundError:
-            logging.error(f"{config_file} not found!")
-            config = {"channel": "", "client_id": "", "client_secret": ""}
-            self._wait_for_flask = True
-        tmp = list(config.keys())
-        tmp.sort()
-        if tmp != ['channel', 'client_id', 'client_secret']:
-            config = {"channel": "", "client_id": "", "client_secret": ""}
-            with open(config_file, "w") as file:
-                json.dump(config, file, indent=2)
-            self._wait_for_flask = True
-        if config["channel"] == "" or config["client_id"] == "" or config["client_secret"] == "":
-            logging.error("Default config detected, will wait for Flask input...")
-            self._wait_for_flask = True
 
-        with open("./assets/misc_data.json") as file:
-            # if you see this, i've spent the last hour trying to get this into a nice .exe file
-            # im just fixing stupid errors dude
-            self._misc_data = json.load(file)
-
-        self._has_token = False
-
-        if self._wait_for_flask:
-            print(f"Waiting for web input @ http://localhost:3000")
-            while not ConfigData.has_code:
-                pass
-
-        if channels is None:
-            channels = [config['channel']]
-
-        self._config = config
-        ConfigData.botpy_config_data = config
-
-        self.has_token = False
-        self._token = self.get_access_token(lambda x: ConfigData.code)
-        print("Attempting connection...")
-        logging.info("Attempting connection...")
-        # sometimes a new token needs a second to actually work :3
-        time.sleep(5)
-        super().__init__(token=self._token, prefix="!", initial_channels=channels,
-                         client_secret=config["client_secret"])
-        self._channel = None
-        self._connected = False
-        self._user = self._get_user(config["channel"])
-        self._active = True
-        self._chatters_checked_at = datetime.now() - timedelta(hours=1)
-        self._moderators = self._get_moderators()
+        self._running = True
+        self._server = server.get_server_instance()
+        self._misc_data = self._server.get_data()
+        self._token = self._get_token()
+        # incase the streamer created a separate user for the bot
+        super().__init__(self._token, prefix="!", client_secret=self._config["client_secret"],
+                         initial_channels=[self._config["channel"]])
+        self._user = self._get_user(self.nick)
+        self._channel_user = self._get_user(self._config["channel"])
+        self._channel = self.get_channel(self._config["channel"])
+        self._mods = self._get_mods()
         self._vips = self._get_vips()
-        self._cheated_n_times = 0
         self._thread = Thread(target=self._worker_thread)
         self._thread.start()
-        with open("./assets/misc_data.json") as file:
-            self._misc_data = json.load(file)
-        now = datetime.now()
-        for task in self._misc_data["repeating_tasks"]:
-            task["next_occurrence"] = (now + timedelta(minutes=task["data"]["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
-        self._default_cmds_list = [item["name"] for item in self._misc_data["default_commands"]]
-        print("Connected! Config page: http://localhost:3000")
 
-    def _is_command_enabled(self, command: str, is_default: bool = True):
-        # shush
-        for cmd in self._misc_data["default_commands" if is_default else "custom_commands"]:
-            if command.lower() == cmd["name"]:
-                return cmd["enabled"]
-        return False
+    async def event_ready(self):
+        logging.info(f"Logged in as {self.nick} with ID {self.user_id}")
+        logging.info(f"Connected to: {[channel.name for channel in self.connected_channels]}")
+        # We are logged in and ready to chat and use commands...
+        print(f'Logged in as @{self.nick}')
+        print(f'User id is {self.user_id}')
+        print(f"Connected to these channels: {[channel.name for channel in self.connected_channels]}")
 
-    async def event_message(self, message: Message):
-        msg = message.content.strip()
-        # avoid weird threading things
-        if msg.startswith("!"):
-            cmd = msg.split()[0].replace("!", "")
-            tmp2 = [tmp for tmp in self._misc_data["custom_commands"] if tmp["name"] == cmd]
-            if len(tmp2) != 0:
-                tmp2 = tmp2[0]
-                logging.info(f"Custom command {cmd} called by {message.author.name}")
-                if tmp2["enabled"]:
-                    await message.channel.send(tmp2["return"])
-                else:
-                    await message.channel.send("Command disabled by streamer")
+    async def event_message(self, msg: twitchio.Message):
+        content = msg.content
+        cmd_name = content.split()[0].replace("!", "").lower()
+        if content.startswith("!"):
+            matches = [cmd for cmd in self._misc_data["custom_commands"] if cmd["name"].lower() == cmd_name]
+            if len(matches) == 0:
+                try:
+                    await self.handle_commands(msg)
+                except twitchio.ext.commands.errors.CommandNotFound:
+                    self.logger.warning(f"!{cmd_name} not found, probably either removed or another bot")
             else:
-                await self.handle_commands(message)
-
-    def _get_vips(self):
-        res = self._get(f"https://api.twitch.tv/helix/channels/vips?broadcaster_id={self._user.id}")
-        try:
-            return [vip["user_login"] for vip in res["data"]]
-        except KeyError:
-            print(res)
-
-    def _get_moderators(self):
-        res = self._get(f"https://api.twitch.tv/helix/moderation/moderators?broadcaster_id={self._user.id}")
-        try:
-            return [mod["user_login"] for mod in res["data"]]
-        except KeyError:
-            print(res)
-
-    def refresh_token(self):
-        logging.info("Refreshing access token...")
-        response = requests.post("https://id.twitch.tv/oauth2/token",
-                                 headers={"Content-Type": "application/x-www-form-urlencoded"},
-                                 data=f"grant_type=refresh_token&refresh_token={self._token_data['refresh_token']}&client_id={self._config['client_id']}&client_secret={self._config['client_secret']}")
-        if response.status_code >= 400:
-            print(f"Failed to refresh token (HTTP code {response.status_code}, https://http.cat/{response.status_code}")
-            logging.error(
-                f"Failed to refresh token (HTTP code {response.status_code}, https://http.cat/{response.status_code}")
-        else:
-            data = response.json()
-            self._token_data["access_token"] = data["access_token"]
-            self._token_data["refresh_token"] = data["refresh_token"]
-            self._token_data["expires_in"] = (datetime.now() + timedelta(hours=3.5)).strftime("%d/%m/%Y %H:%M:%S")
-            with open("./assets/token.json", "w") as file:
-                json.dump(self._token_data, file, indent=2)
-            self._token = data["access_token"]
-            logging.info("Successfully refreshed token!")
-
-    def get_access_token(self, callback):
-        try:
-            logging.info("Attempting to get a previous token...")
-            with open("./assets/token.json") as file:
-                data = json.load(file)
-                self._token_data = data
-            if data == {}:
-                data = {"access_token": ""}
-        except FileNotFoundError:
-            # get a new token, mildly sketchy logic
-            logging.info("token.json not found, creating...")
-            data = {"access_token": ""}
-        if "code" in list(data.keys()):
-            response = requests.post("https://id.twitch.tv/oauth2/token",
-                                     data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={token}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token").json()
-            try:
-                response["expires_in"] = (datetime.now() + timedelta(seconds=response["expires_in"] - 60))
-                self._token_data = response
-                response["expires_in"] = response["expires_in"].strftime("%d/%m/%Y %H:%M:%S")
-                with open("./assets/token.json", "w") as file:
-                    json.dump(response, file, indent=2)
-
-                return response["access_token"]
-            except Exception as e:
-                logging.error(f"Error getting token: {str(e)}")
-                logging.error("Most likely invalid client id/secret")
-                raise Exception(
-                    f"Error getting token: {str(e)}. Check your client_id and client_secret in client_config.json!")
-        elif data["access_token"] == "" or "refresh_token" not in list(data.keys()):
-            print("Connect to twitch via this link:")
-            scopes = [
-                "moderator:read:chatters",
-                "chat:edit",
-                "chat:read",
-                "moderator:manage:shoutouts",
-                "channel:manage:polls",
-                "moderator:manage:chat_messages",
-                "channel:manage:broadcast",
-                "moderation:read",
-                "channel:read:vips"
-            ]
-            logging.info(f"Scopes: {', '.join(scopes)}")
-            # print("""https://id.twitch.tv/oauth2/authorize?response_type=token&client_id=28jexim9tw3g8u52evmlqbpob96ymn&redirect_uri=http://localhost:3000&scope=moderator%3Aread%3Achatters%2Bchat%3Aedit%2Bchat%3Aread&state=c3ab8aa609ea11e793ae92361f002671""")
-            print(f"""https://id.twitch.tv/oauth2/authorize
-            ?response_type=code
-            &client_id={self._config['client_id']}
-            &redirect_uri=http://localhost:3000/token
-            &scope={'+'.join(scopes)}""".replace("\n", "").replace(" ", "").strip())
-            print("Waiting...")
-            logging.info("Waiting for user...")
-            while callback(0) is None:
-                pass
-            token = callback(0)
-            response = requests.post("https://id.twitch.tv/oauth2/token",
-                                     data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={token}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token").json()
-            try:
-                response["expires_in"] = (datetime.now() + timedelta(seconds=response["expires_in"] - 60))
-                self._token_data = response
-                response["expires_in"] = response["expires_in"].strftime("%d/%m/%Y %H:%M:%S")
-                with open("./assets/token.json", "w") as file:
-                    json.dump(response, file, indent=2)
-                return token
-            except Exception as e:
-                logging.error(f"Error getting token: {str(e)}")
-                logging.error("Most likely invalid client id/secret")
-                raise Exception(
-                    f"Error getting token: {str(e)}. Check your client_id and client_secret in client_config.json!")
-        elif "refresh_token" in list(data.keys()) and data["refresh_token"] != "":
-            self.refresh_token()
-            return self._token
-        elif datetime.strptime(data["expires_in"], "%d/%m/%Y %H:%M:%S") > (datetime.now() + timedelta(hours=1)):
-            return data["access_token"]
-
-    def _worker_thread(self):
-        while self._active:
-            now = datetime.now()
-
-            if abs((now - datetime.strptime(self._token_data["expires_in"], "%d/%m/%Y %H:%M:%S")).total_seconds()) < 120:
-                self.refresh_token()
-
-            ConfigData.data_from_botpy = self._misc_data
-            if ConfigData.new_update_req:
-                cmd_name = list(ConfigData.update_req_data.keys())[0]
-                enabled = ConfigData.update_req_data[cmd_name]
-                if enabled:
-                    self.enable_command(cmd_name)
+                if matches[0]["enabled"]:
+                    await msg.channel.send(matches[0]["return"])
                 else:
-                    self.disable_command(cmd_name)
-                ConfigData.new_update_req = False
-                ConfigData.botpy_config_data = self._config
+                    await msg.channel.send("command disabled")
 
-            if ConfigData.new_repeating_task:
-                data = ConfigData.new_task_data
-                logging.info(f"New repeating task: {data}")
-                ConfigData.new_repeating_task = False
-                # TODO: input validation :3
-                self._misc_data["repeating_tasks"].append({
-                    "type": data["type"],
-                    "frequency": int(data["freq_val"]),
-                    "data": data,
-                    "next_occurrence": (now + timedelta(minutes=data["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
-                })
-                logging.info(self._misc_data["repeating_tasks"])
-                with open("./assets/misc_data.json", "w") as file:
-                    json.dump(self._misc_data, file, indent=2)
+    def _dump_quotes(self):
+        with open("./assets/quotes.json", "w") as file:
+            json.dump(self._quotes, file, indent=2)
 
-            if ConfigData.remove_repeating_task:
-                tmp = self._misc_data["repeating_tasks"]
-                tmp2 = []
-                name = clean(ConfigData.remove_task_name)
-                for item in tmp:
-                    item_name = item["data"]["msg_body"] if item["type"] == "msg" else item["data"]["title"]
-                    if clean(item_name) != name:
-                        tmp2.append(item)
-                # tmp = [item for item in tmp if clean(item["data"]["msg_body"] if item["type"] == "msg" else item["data"]["title"] != clean(ConfigData.remove_task_name))]
-                self._misc_data["repeating_tasks"] = tmp2
-                with open("./assets/misc_data.json", "w") as file:
-                    json.dump(self._misc_data, file, indent=2)
-                ConfigData.remove_repeating_task = False
-
-            for task in self._misc_data["repeating_tasks"]:
-                time_ = datetime.strptime(task["next_occurrence"], "%d/%m/%Y %H:%M:%S")
-                data = task["data"]
-                if (now - time_).total_seconds() > 0:
-                    logging.info("doing repeating task with data:", data)
-                    if task["type"] == "poll":
-                        """
-                        title: title
-                        options: options
-                        c_points_enabled: true/false
-                        c_points_per_vote: int
-                        """
-                        self.create_poll(data["title"], data["options"], channel_points=data["c_points_enabled"], points_per_vote=data["c_points_per_vote"], duration=data["duration"])
-                    else:
-                        """
-                        msg_body: content
-                        """
-                        self._send_message(data["msg_body"])
-                    task["next_occurrence"] = (now + timedelta(minutes=data["freq_val"])).strftime("%d/%m/%Y %H:%M:%S")
-                    logging.info("next: " + task["next_occurrence"])
-
-            ConfigData.tasks = self._misc_data["repeating_tasks"]
-
-    def _send_message(self, content):
-        if self._connected:
-            if self._channel is None:
-                self._channel = self.get_channel(self._config["channel"])
-            self._loop.create_task(self._channel.send(content))
-        else:
-            logging.warning("Cannot send message because not connected yet :3")
+    def _dump_misc_data(self):
+        with open("./assets/quotes.json", "w") as file:
+            json.dump(self._misc_data, file, indent=2)
 
     def _get(self, url):
         logging.debug(f"Getting url: {url}")
         return requests.get(url, headers={"Authorization": f"Bearer {self._token}",
                                           "Client-Id": self._config["client_id"]}).json()
+
+    def _get_mods(self):
+        url = f"https://api.twitch.tv/helix/moderation/moderators?broadcaster_id={self._channel_user.id}"
+        res = self._get(url)
+        return [user["user_login"] for user in res["data"]]
+
+    def _get_vips(self):
+        url = f"https://api.twitch.tv/helix/channels/vips?broadcaster_id={self._channel_user.id}"
+        res = self._get(url)
+        return [user["user_login"] for user in res["data"]]
 
     def _get_user(self, username):
         logging.info(f"Attempting to get user {username}")
@@ -358,328 +142,421 @@ class Bot(commands.Bot):
             logging.error("Token not valid ig, wait a few seconds")
             raise Exception("Twitch token being dumb, wait a few seconds then run again")
 
-    async def event_ready(self):
-        logging.info(f"Logged in as {self.nick} with ID {self.user_id}")
-        logging.info(f"Connected to: {[channel.name for channel in self.connected_channels]}")
-        # We are logged in and ready to chat and use commands...
-        print(f'Logged in as @{self.nick}')
-        print(f'User id is {self.user_id}')
-        print(f"Connected to these channels: {[channel.name for channel in self.connected_channels]}")
-        self._connected = True
+    def _worker_thread(self):
+        while self._running:
+            now = datetime.now()
 
-    @commands.command()
-    async def hello(self, ctx: commands.Context):
-        logging.info(f"!hello called by {ctx.author.name}")
-        if not self._is_command_enabled("hello"):
-            await ctx.send("Command disabled by streamer")
-            return
-        await ctx.send(f'Hello {ctx.author.name}!')
+            if (datetime.strptime(self._token_data["expires_in"], date_time_fmt) - now).total_seconds() < 120:
+                logging.info("refreshing access token")
+                self._token = self._refresh_token()
 
-    @commands.command()
-    async def ping(self, ctx: commands.Context):
-        logging.info(f"!ping called by {ctx.author.name}")
-        if not self._is_command_enabled("ping"):
-            await ctx.send("Command disabled by streamer")
-            return
-        # pong
-        await ctx.send(f'Pong!')
-
-    @commands.command()
-    async def addquote(self, ctx: commands.Context):
-        logging.info(f"!addquote called by {ctx.author.name}")
-        # if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
-        user = ctx.message.author.name
-        if user in self._moderators or user in self._vips or user == ctx.channel.name:
-            if not self._is_command_enabled("addquote"):
-                await ctx.send("Command disabled by streamer")
-                return
-            num_quotes = add_quote(ctx)
-            logging.info(f"Added quote #{num_quotes}")
-            await ctx.send(f"Successfully added quote #{num_quotes}")
-        else:
-            logging.info(f"{user} does not have permission to use this command!")
-            await ctx.send("<3 you dont have permission to use this command <3")
-
-    @commands.command()
-    async def quote(self, ctx: commands.Context):
-        logging.info(f"!quote called by {ctx.author.name}")
-        if not self._is_command_enabled("quote"):
-            await ctx.send("Command disabled by streamer")
-            logging.info("Command disabled")
-            return
-        msg = ctx.message.content.strip().replace("\U000e0000", "")
-        args = msg.split(" ")[1:]
-        args = [item.strip() for item in args if len(item.strip()) > 0]
-        if len(args) != 0:
-            number = args[0]
-            try:
-                number = int(number)
-                if number <= 0:
-                    logging.error(f"{number} must be greater than 0!")
-                    await ctx.send("Argument 'number' must be a number greater than 0!")
-                else:
-                    with open("./assets/quotes.json") as file:
-                        quotes = json.load(file)
-                    quotes = [quote for quote in quotes if quote["streamer"] == ctx.channel.name]
-                    if number > len(quotes):
-                        logging.error(f"{number} out of bounds! Only {len(quotes)} quotes found")
-                        await ctx.send(f"Argument 'number' out of bounds! Only {len(quotes)} quotes found!" if len(
-                            quotes) > 0 else "No quotes found!")
+            self._misc_data = self._server.get_data()
+            for task in self._misc_data["repeating_tasks"]:
+                # later times are greater
+                if datetime.strptime(task["next"], date_time_fmt) < now:
+                    self.logger.info(f"Doing task with data: {task}")
+                    if task["type"] == "poll":
+                        """
+                        poll: {
+                            "freq_val": frequency_value,
+                            "freq_units": frequency_unit,
+                            "title": title,
+                            "options": options_text,
+                            "c_points_enabled": channel_points_enabled,
+                            "c_points_per_vote": channel_points_per_vote,
+                            "duration": duration,
+                            "next": next,
+                            "type": "poll"
+                        }
+                        """
+                        self.create_poll(task["title"], task["options"], task["duration"], task["c_points_enabled"], task["c_points_per_vote"])
                     else:
-                        await ctx.send(format_quote(quotes[number - 1]))
-            except Exception as e:
-                logging.error(f"{number} is not a valid number. Error message: {str(e)}")
-                await ctx.send("Argument 'number' is not a valid number!")
-        else:
-            await ctx.send(random_quote(ctx))
+                        """
+                        msg: {
+                            "freq_val": frequency_value,
+                            "freq_units": frequency_unit,
+                            "msg_body": content,
+                            "next": next,
+                            "type": "msg"
+                        }
+                        """
+                        self.send_message(task["msg_body"])
+                    task["next"] = (now + timedelta(minutes=task["freq_val"])).strftime(date_time_fmt)
 
-    @commands.command()
-    async def ads(self, ctx: commands.Context):
-        # https://github.com/pixeltris/TwitchAdSolutions
-        logging.info(f"!ads called by {ctx.author.name}")
-        user = ctx.message.author.name
-        if user in self._moderators or user == ctx.channel.name:
-            if not self._is_command_enabled("ads"):
-                await ctx.send("Command disabled by streamer")
-                logging.info("Command disabled")
-                return
-            await ctx.send("https://github.com/pixeltris/TwitchAdSolutions")
-        else:
-            await ctx.send("<3 you dont have permission to use this command <3")
+    def _is_command_enabled(self, name, is_default):
+        return self._server.is_command_enabled(name, is_default)
 
-    @commands.command()
-    async def help(self, ctx: commands.Context):
-        logging.info(f"!help called by {ctx.author.name}")
-        if not self._is_command_enabled("help"):
-            await ctx.send("Command disabled by streamer")
-            logging.info("Command disabled")
-            return
-        msg = """Commands:
-!help: shows this  ||  
-!quote [num]: Shows quote [num] from this streamer. If no number is passed, shows a random quote  ||  
-!hello: says hello back  ||  
-!ping: Responds with 'Pong!'"""
-        if ctx.author.badges.get("vip") or ctx.author.badges.get("mod") or ctx.author.name == ctx.channel.name:
-            msg += """  ||  
-!addquote [quote] (mods/vips only): Adds a quote. Format as: '!addquote {msg}' without quotation marks"""
-        await ctx.send(msg)
-
-    @commands.command(aliases=["so"])
-    async def shoutout(self, ctx: commands.Context, streamer: str):
-        logging.info(f"!shoutout called by {ctx.author.name} to {streamer}")
-        user = ctx.message.author.name
-        if user in self._moderators or user == ctx.channel.name:
-            if not self._is_command_enabled("shoutout"):
-                await ctx.send("Command disabled by streamer")
-                logging.info("Command disabled")
-                return
-            streamer = streamer.strip().replace("@", "")
-            user = self._get_user(streamer)
-            if user is not None:
-                logging.info(f"Streamer ID: {user.id}")
-                await ctx.send(f"Go check out @{user.name} at https://twitch.tv/{user.name} !")
-                # await user.shoutout(self._token, user.id, self._user.id)
-                requests.post(f"https://api.twitch.tv/helix/chat/shoutouts?"
-                              f"from_broadcaster_id={self.user_id}&to_broadcaster_id={user.id}"
-                              f"&moderator_id={self.user_id}".replace(" ", "").replace("\n", ""),
-                              headers={"Authorization": f"Bearer {self._token}",
-                                       "Client-Id": self._config["client_id"]}
-                              )
-                logging.info("Successfully sent shoutout!")
-            else:
-                logging.error(f"User {streamer} not found!")
-                await ctx.send(f"User {streamer} not found!")
-        else:
-            logging.warning(f"User {ctx.author.name} does not have permission to use !shoutout !")
-            await ctx.send("<3 you dont have permission to use this command <3")
-
-    @commands.command()
-    async def game(self, ctx: commands.Context):
-        user = ctx.message.author.name
-        if user in self._moderators or user == ctx.channel.name:
-            if not self._is_command_enabled("game"):
-                logging.info("Command disabled")
-                await ctx.send("Command disabled by streamer")
-                return
+    def _get_token(self):
+        if self._config == Bot.default_config and self._token_data == {}:
+            # no code, no token
+            self.logger.info("Waiting for Flask input...")
+            print("Go to http://localhost:3000 to set client_id, client_secret, and channel name!")
+            # get config --> get code
+            while self._server.get_config() == Bot.default_config and self._server.get_config() != {}:
+                pass
+            self._config = self._server.get_config()
+            with open("./assets/config.json", "w") as file:
+                json.dump(self._config, file, indent=2)
+            # multiline url is easier to read :)
+            url = f"""https://id.twitch.tv/oauth2/authorize
+                        ?response_type=code
+                        &client_id={self._config['client_id']}
+                        &redirect_uri=http://localhost:3000/token
+                        &scope={"+".join(self._scopes)}""".replace("\n", "").replace(" ", "")
+            # TODO: keep this or just print link
+            # cmd prompt doesn't let you click links
+            # i think i'll keep it for now
+            self.logger.info(f"Opening browser to {url}")
+            print(f"Opening browser to {url}")
+            webbrowser.open(url, autoraise=True, new=0)
+            while self._server.code is None:
+                pass
+            code = self._server.code
+            url = f"""https://id.twitch.tv/oauth2/token/
+                    client_id={self._config['client_id']}
+                    &client_secret={self._config['client_secret']}
+                    &code={code}
+                    &grant_type=authorization_code
+                    &redirect_uri=http://localhost:3000/token""".replace("\n", "").replace(" ", "")
+            res = requests.request("post", url)
             try:
-                msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
-                logging.info(f"!game called by {ctx.author.name}")
-                categories = await self.search_categories(msg)
-                if len(categories) > 0:
-                    url = f"https://api.twitch.tv/helix/channels?broadcaster_id={self._user.id}"
-                    headers = {
-                        "Authorization": f"Bearer {self._token}",
-                        "Client-Id": self._config["client_id"],
-                        "Content-Type": "application/json"
-                    }
-                    res = requests.patch(url, headers=headers, json={"game_id": categories[0].id})
-                    if res.status_code == 204:
-                        await ctx.send(f"Successfully updated game to {categories[0].name}")
-                    else:
-                        logging.error(f"Got status code {res.status_code}")
-                else:
-                    await ctx.send(f"Game '{msg}' not found")
-            except ValueError:
-                await ctx.send("Please specify a game!")
+                res.raise_for_status()
+            except:
+                self.logger.error("Please rerun the bot, this is a weird glitch!")
+                print("Please rerun the bot, this is a weird glitch!")
+            res = res.json()
+            res["expires_in"] = (datetime.now() + timedelta(seconds=(res["expires_in"] - 120))).strftime(
+                date_time_fmt)
+            self._token = res["access_token"]
+            self._token_data = res
+            dump_token(self._token_data)
+            return self._token
+            # get code --> get token
+        elif self._config != Bot.default_config and self._token_data == {}:
+            # have code --> get token
+            url = f"""https://id.twitch.tv/oauth2/authorize
+                        ?response_type=code
+                        &client_id={self._config['client_id']}
+                        &redirect_uri=http://localhost:3000/token
+                        &scope={"+".join(self._scopes)}""".replace("\n", "").replace(" ", "")
+            self.logger.info(f"Opening browser to {url}")
+            print(f"Opening browser to {url}")
+            webbrowser.open(url, autoraise=True, new=0)
+
+            while self._server.code is None:
+                pass
+            code = self._server.code
+
+            res = requests.post("https://id.twitch.tv/oauth2/token",
+                                data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={code}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token")
+            res.raise_for_status()
+            res = res.json()
+            self._token = res["access_token"]
+            res["expires_in"] = (datetime.now() + timedelta(seconds=(res["expires_in"] - 120))).strftime(
+                date_time_fmt)
+            self._token_data = res
+            dump_token(self._token_data)
+            return self._token
+        elif self._config != Bot.default_config and "code" in list(self._token_data.keys()):
+            # no code but config --> get code --> get token
+            code = self._token_data["code"]
+            res = requests.post("https://id.twitch.tv/oauth2/token",
+                                data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={code}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token")
+            res.raise_for_status()
+            res = res.json()
+            res["expires_in"] = (datetime.now() + timedelta(seconds=(res["expires_in"] - 120))).strftime(
+                date_time_fmt)
+            self._token = res["access_token"]
+            self._token_data = res
+            dump_token(res)
+            return self._token
+        elif self._config != Bot.default_config and self._token_data != {}:
+            # have past token --> get new token
+            return self._refresh_token()
+
+    def _refresh_token(self):
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+        }
+
+        data = f"grant_type=refresh_token&refresh_token={self._token_data['refresh_token']}&client_id={self._config['client_id']}&client_secret={self._config['client_secret']}"
+
+        res = requests.request("post", "https://id.twitch.tv/oauth2/token", headers=headers, data=data)
+        res.raise_for_status()
+        res = res.json()
+        res["expires_in"] = (datetime.now() + timedelta(seconds=(res["expires_in"] - 120))).strftime(
+            date_time_fmt)
+        self._token_data = res
+        self._token = res["access_token"]
+        dump_token(res)
+        return res["access_token"]
+
+    def _add_command(self, name, return_):
+        self._server.add_command(name, return_, True)
+
+    def _remove_command(self, name):
+        self._server.remove_command(name)
+
+    def _enable_command(self, name, is_default):
+        self._server.enable_command(name, is_default)
+
+    def _disable_command(self, name, is_default):
+        self._server.disable_command(name, is_default)
+
+    def send_announcement(self, msg, color: str | None = None):
+        self.logger.info("sending an announcement")
+        if not self._running:
+            self.logger.error("not running yet lmao")
+            raise Exception("cannot invoke send_message because the bot isn't running!")
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Client-Id": self._config["client_id"],
+            "Content-Type": "application/json",
+        }
+        json_ = {
+            "message": msg,
+            "color": color
+        }
+        res = requests.post(f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={self._channel_user.id}&moderator_id={self._user.id}", headers=headers, json=json_)
+        if res.status_code >= 300:
+            self.logger.error(f"Failed to create poll with status code: {res.status_code}")
+            print(f"Failed to create poll with status code: {res.status_code}")
+
+    def send_shoutout(self, user):
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Client-Id": self._config["client_id"],
+        }
+
+        res = requests.post(f"https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id={self._channel_user.id}&to_broadcaster_id{self._get_user(user).id}&moderator_id={self._user.id}", headers=headers)
+        if res.status_code >= 300:
+            self.logger.error(f"Failed to create poll with status code: {res.status_code}")
+            print(f"Failed to create poll with status code: {res.status_code}")
+
+    def send_message(self, content):
+        if self._running:
+            if self._channel is None:
+                self._channel = self.get_channel(self._config["channel"])
+            self._loop.create_task(self._channel.send(content))
         else:
-            logging.warning(f"User {ctx.author.name} does not have permission to use !game !")
-            await ctx.send("<3 you dont have permission to use this command <3")
+            self.logger.error("not running yet lmao")
+            raise Exception("cannot invoke send_message because the bot isn't running!")
 
-    @commands.command()
-    async def title(self, ctx: commands.Context):
-        user = ctx.message.author.name
-        if user in self._moderators or user == ctx.channel.name:
-            if not self._is_command_enabled("title"):
-                logging.info("Command disabled")
-                await ctx.send("Command disabled by streamer")
-                return
-            try:
-                msg = ctx.message.content[ctx.message.content.index(" ") + 1:].strip().replace('"', "")
-                logging.info(f"!title called by {ctx.author.name}")
-                url = f"https://api.twitch.tv/helix/channels?broadcaster_id={self._user.id}"
-                headers = {
-                    "Authorization": f"Bearer {self._token}",
-                    "Client-Id": self._config["client_id"],
-                    "Content-Type": "application/json"
-                }
-                res = requests.patch(url, headers=headers, json={"title": msg})
-                if res.status_code == 204:
-                    await ctx.send(f"Successfully updated title to '{msg}'")
-                else:
-                    logging.error(f"Got status code != 204: {res.status_code}")
-            except ValueError:
-                await ctx.send("Please specify a title!")
-        else:
-            logging.warning(f"User {ctx.author.name} does not have permission to use !game !")
-            await ctx.send("<3 you dont have permission to use this command <3")
-
-    @commands.command(aliases=("cheat", "cheats"))
-    async def cheater(self, ctx: commands.Context):
-        logging.info(f"!cheater called by {ctx.message.author.name}")
-        if ctx.message.author.name in self._moderators or ctx.message.author.name in self._vips or ctx.author.name == ctx.channel.name:
-            if not self._is_command_enabled("cheater"):
-                logging.info("Command disabled")
-                await ctx.send("Command disabled by streamer")
-                return
-            try:
-                with open("./assets/misc_data.json") as file:
-                    data = json.load(file)
-            except FileNotFoundError:
-                data = {"cheats_total": 0}
-            data["cheats_total"] += 1
-            self._cheated_n_times += 1
-            with open("./assets/misc_data.json", "w") as file:
-                json.dump(data, file, indent=2)
-            await ctx.send(
-                f"{ctx.channel.name} has cheated {self._cheated_n_times} time(s) this stream ({data['cheats_total']} total)")
-        else:
-            logging.warning(f"{ctx.message.author.name} does not have permission to use !cheater")
-            await ctx.send("<3 you don't have permission to use this command <3")
-
-    @commands.command(aliases=("addcommand", "add_command", "add_cmd"))
-    async def addcmd(self, ctx: commands.Context):
-        logging.info(f"!add_command called by {ctx.author.name}")
-        if ctx.author.name in self._moderators or ctx.author.name == ctx.channel.name:
-            if not self._is_command_enabled("add_command"):
-                await ctx.send("Command disabled by streamer")
-                return
-            try:
-                msg = ctx.message.content
-                cmd_name = msg.split()[1]
-                return_ = msg.split()[2:]
-                self._misc_data["custom_commands"].append({"name": cmd_name, "return": " ".join(return_), "enabled": True})
-
-                with open("./assets/misc_data.json", "w") as file:
-                    json.dump(self._misc_data, file, indent=2)
-
-                await ctx.send(f"Successfully added command {cmd_name}")
-            except Exception as e:
-                logging.error(f"Failed to add command: {str(e)}")
-                await ctx.send("Failed to add command")
-        else:
-            logging.warning(f"{ctx.author.name} does not have permission to add commands")
-            await ctx.send("<3 you don't have permission to use this command <3")
-
-    # the (, ) is formatting so Pycharm doesn't freak out
-    @commands.command(aliases=("remove_command", ))
-    async def remove_cmd(self, ctx: commands.Context):
-        logging.info(f"!remove_cmd called by {ctx.author.name}")
-        if ctx.author.name in self._moderators or ctx.author.name == ctx.channel.name:
-            if not self._is_command_enabled("remove_command"):
-                await ctx.send("Command disabled by streamer")
-                return
-            try:
-                msg = ctx.message.content
-                cmd_name = msg.lower().split()[1]
-                try:
-                    cmd = [tmp for tmp in self._misc_data["custom_commands"] if tmp["name"] == cmd_name][0]
-                    index = self._misc_data["custom_commands"].index(cmd)
-                    self._misc_data["custom_commands"].pop(index)
-                except ValueError:
-                    pass
-                except IndexError:
-                    pass
-
-                with open("./assets/misc_data.json", "w") as file:
-                    json.dump(self._misc_data, file, indent=2)
-
-                    await ctx.send(f"Successfully removed command {cmd_name}")
-            except Exception as e:
-                logging.error(f"Failed to add command: {str(e)}")
-                await ctx.send("Failed to remove command")
-        else:
-            logging.warning(f"{ctx.author.name} does not have permission to add commands")
-            await ctx.send("<3 you don't have permission to use this command <3")
-
-    def disable_command(self, cmd_name):
-        default_cmds = self._misc_data["default_commands"]
-        custom_cmds = self._misc_data["custom_commands"]
-        default_cmd_names = [item["name"] for item in default_cmds]
-        custom_cmd_names = [item["name"] for item in custom_cmds]
-        try:
-            index = default_cmd_names.index(cmd_name)
-            self._misc_data["default_commands"][index]["enabled"] = False
-        except ValueError:
-            try:
-                index = custom_cmd_names.index(cmd_name)
-                self._misc_data["custom_commands"][index]["enabled"] = False
-            except ValueError:
-                logging.error("Command not found")
-        with open("./assets/misc_data.json", "w") as file:
-            json.dump(self._misc_data, file, indent=2)
-        logging.info(f"Disabled command: {cmd_name}")
-
-    def enable_command(self, cmd_name):
-        default_cmds = self._misc_data["default_commands"]
-        custom_cmds = self._misc_data["custom_commands"]
-        default_cmd_names = [item["name"] for item in default_cmds]
-        custom_cmd_names = [item["name"] for item in custom_cmds]
-        try:
-            index = default_cmd_names.index(cmd_name)
-            self._misc_data["default_commands"][index]["enabled"] = True
-        except ValueError:
-            try:
-                index = custom_cmd_names.index(cmd_name)
-                self._misc_data["custom_commands"][index]["enabled"] = True
-            except ValueError:
-                logging.error("Command not found")
-        with open("./assets/misc_data.json", "w") as file:
-            json.dump(self._misc_data, file, indent=2)
-        logging.info(f"Disabled command: {cmd_name}")
-
-    def create_poll(self, title: str, options: list, channel_points=False, points_per_vote=0, duration=120):
+    def create_poll(self, title, options, duration=120, channel_points_enabled=False, channel_points_per_vote=100):
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Client-Id": self._config["client_id"],
             "Content-Type": "application/json",
         }
         data = {
-            "broadcaster_id": self._user.id,
+            "broadcaster_id": str(self._channel_user.id),
             "title": title,
             "choices": [{"title": option} for option in options],
-            "channel_points_voting_enabled": channel_points,
-            "channel_points_per_vote": points_per_vote,
             "duration": duration,
+            "channel_points_voting_enabled": channel_points_enabled,
+            "channel_points_per_vote": channel_points_per_vote
         }
-        response = requests.post('https://api.twitch.tv/helix/polls', headers=headers, json=data)
-        return response.status_code
+        res = requests.post("https://api.twitch.tv/helix/polls", headers=headers, json=data)
+        if res.status_code >= 300:
+            self.logger.error(f"Failed to create poll with status code: {res.status_code}")
+            print(f"Failed to create poll with status code: {res.status_code}")
+
+    @commands.command()
+    async def hello(self, ctx: commands.Context):
+        self.logger.info(f"!hello called by {ctx.author.name}")
+        if self._is_command_enabled("hello", True):
+            await ctx.send(f"Hello {ctx.author.name}!")
+        else:
+            self.logger.info(f"!hello is disabled")
+            await ctx.send("command disabled")
+
+    @commands.command()
+    async def ping(self, ctx: commands.Context):
+        self.logger.info(f"!ping called by {ctx.author.name}")
+        if self._is_command_enabled("ping", True):
+            await ctx.send(f"Pong!")
+        else:
+            self.logger.info(f"!ping is disabled")
+            await ctx.send("command disabled")
+
+    @commands.command(aliases=("addquote", "aq"))
+    async def add_quote(self, ctx: commands.Context):
+        name = ctx.author.name
+        self.logger.info(f"!addquote called by {name}")
+        if name in self._vips or name in self._mods or name == self._channel_user.name:
+            if not self._is_command_enabled("addquote", True):
+                self.logger.info(f"!addquote is disabled")
+                await ctx.send("command disabled")
+                return
+            msg = ctx.message.content.split()[1:]
+            data = {
+                "quoter": ctx.author.name,
+                "date": datetime.now().strftime(date_fmt),
+                "num": len(self._quotes) + 1,
+                "quote": " ".join(msg),
+                "streamer": self._channel_user.name
+            }
+            self._quotes.append(data)
+            self._dump_quotes()
+            self.logger.info(f"added quote {data['num']}")
+            await ctx.send(f"Added quote #{len(self._quotes)}!")
+        else:
+            self.logger.info("user is powerless!")
+            await ctx.send("<3 you don't have permission to use this command <3")
+
+    @commands.command(aliases=("q",))
+    async def quote(self, ctx: commands.Context):
+        self.logger.info(f"!quote called by {ctx.author.name}")
+        if not self._is_command_enabled("quote", True):
+            self.logger.info(f"!quote is disabled")
+            await ctx.send("command disabled")
+            return
+        msg = ctx.message.content.split()[1:]
+        if len(msg) == 0:
+            await ctx.send(random_quote(self._quotes, self._config["channel"]))
+            return
+        else:
+            num = msg[0]
+            try:
+                num = int(num) - 1
+                await ctx.send(format_quote(self._quotes[num]))
+            except ValueError:
+                logging.error(f"{num} isn't a valid base 10 integer")
+                await ctx.send("Argument 'number' is invalid!")
+            except IndexError:
+                logging.error(f"{num} > {len(self._quotes)}!")
+                await ctx.send(f"Only {len(self._quotes)} quotes found!")
+
+    @commands.command(aliases=("so",))
+    async def shoutout(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!shoutout called by {user}")
+        if user in self._mods or user == self._channel_user.name:
+            if not self._is_command_enabled("shoutout", True):
+                self.logger.info(f"!shoutout is disabled")
+                await ctx.send("command disabled")
+                return
+            try:
+                streamer = ctx.message.content.split()[1]
+            except IndexError:
+                await ctx.send("Please specify a streamer to shout out!")
+                return
+
+            streams = await self.fetch_streams(user_logins=[user])
+            self.send_shoutout(streamer)
+            try:
+                msg = f"Go check out @{streamer} over at https://twitch.tv/{streamer} ! Last seen playing {streams[0].game_name}"
+            except IndexError:
+                msg = f"Go check out @{streamer} over at https://twitch.tv/{streamer} !"
+            self.send_announcement(msg, color="blue")
+        else:
+            await ctx.send("<3 you don't have permission to use this command <3")
+
+    @commands.command(aliases=("addcmd", "add_cmd", "add_command", "addcommand"))
+    async def add_command_(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!add_command called by {user}")
+        if user in self._mods or user == ctx.channel.name:
+            if not self._is_command_enabled("add_command", True):
+                self.logger.info("Command disabled")
+                await ctx.send("command disabled")
+                return
+            args = ctx.message.content.split()[1:]
+            if len(args) < 2:
+                self.logger.info("no return value/name specified")
+                await ctx.send("Please specify the return value!")
+            else:
+                if args[0].lower() not in [cmd["name"].lower() for cmd in self._misc_data["custom_commands"]]:
+                    self._add_command(args[0], " ".join(args[1:]))
+                    await ctx.send(f"Successfully added command {args[0]}")
+                else:
+                    await ctx.send(f"Command '!{args[0]}' already exists!")
+        else:
+            await ctx.send("<3 you don't have permission to use this command")
+
+    # all the ways you could be wrong:
+    @commands.command(aliases=("rmvcmd", "rmv_cmd", "remove_cmd", "removecommand", "removecmd"))
+    async def remove_command(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!remove_command called by {user}")
+        if user in self._mods or user == ctx.channel.name:
+            if not self._is_command_enabled("remove_command", True):
+                self.logger.info("Command disabled")
+                await ctx.send("command disabled")
+                return
+            args = ctx.message.content.split()[1:]
+            if len(args) < 1:
+                self.logger.info("no return value/name specified")
+                await ctx.send("Please specify the return value!")
+            else:
+                self._remove_command(args[0])
+                await ctx.send("Successfully removed command!")
+        else:
+            await ctx.send("<3 you don't have permission to use this command")
+
+    async def _update_channel_info(self, game=None, language=None, title=None, tags=None, content_labels=None, content_label_ids=None, content_labels_enabled=None, branded_content=None):
+        headers = {
+            "Authorization": f"Bearer {self._token}",
+            "Client-Id": self._config["client_id"],
+            "Content-Type": "application/json",
+        }
+        params = {
+            'broadcaster_id': str(self._channel_user.id),
+        }
+        data = {}
+        if game is not None:
+            data["game_id"] = game.id
+        if language is not None:
+            data["broadcaster_language"] = language
+        if title is not None:
+            data["title"] = title
+        if tags is not None:
+            data["tags"] = tags
+        if content_labels is not None:
+            data["content_classification_labels"] = content_labels
+            if content_label_ids is not None:
+                data["id"] = content_labels
+            if content_labels_enabled is not None:
+                data["is_enabled"] = content_labels
+        if branded_content is not None:
+            data["is_branded_content"] = branded_content
+        res = requests.patch('https://api.twitch.tv/helix/channels', params=params, headers=headers,
+                                  json=data)
+        if res.status_code >= 300:
+            self.logger.error(f"Failed to update channel config with code {res.status_code}")
+
+    # hehe
+    @commands.command(aliases=("tit", ))
+    async def title(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!title called by {user}")
+        if user in self._mods or user == ctx.channel.name:
+            if not self._is_command_enabled("title", True):
+                self.logger.info("Command disabled")
+                await ctx.send("command disabled")
+                return
+            title = " ".join(ctx.message.content.split()[1:])
+            await self._update_channel_info(title=title)
+            await ctx.send(f"Successfully updated title to '{title}'")
+        else:
+            await ctx.send("<3 you don't have permission to use this command")
+
+    @commands.command()
+    async def game(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!game called by {user}")
+        if user in self._mods or user == ctx.channel.name:
+            if not self._is_command_enabled("game", True):
+                self.logger.info("Command disabled")
+                await ctx.send("command disabled")
+                return
+            game = " ".join(ctx.message.content.split()[1:])
+            categories = await self.search_categories(game)
+            try:
+                await self._update_channel_info(game=categories[0])
+                name = categories[0].name
+                await ctx.send(f"Successfully updated game to '{name}'")
+            except IndexError:
+                await ctx.send(f"nuh uh :3 (code error: most likely game doesn't exist on Twitch)")
+        else:
+            await ctx.send("<3 you don't have permission to use this command")

@@ -1,5 +1,4 @@
 {
-  "cheats_total": 0,
   "custom_commands": [],
   "default_commands": [
     {
@@ -21,16 +20,6 @@
       "name": "ping",
       "enabled": true,
       "description": "Responds with 'Pong!'"
-    },
-    {
-      "name": "ads",
-      "enabled": false,
-      "description": "Links <a href=\"https://github.com/pixeltris/TwitchAdSolutions\" target=\"_blank\">twitchadsolutions</a> in the chat (mods only)"
-    },
-    {
-      "name": "help",
-      "enabled": true,
-      "description": "Responds with a list of commands excluding custom commands"
     },
     {
       "name": "shoutout",

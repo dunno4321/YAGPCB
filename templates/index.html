@@ -29,9 +29,9 @@ a {
 }
 </style>
 <script>
-function send_(item) {
+function send_(item, is_default) {
     var element = document.getElementById(item);
-    fetch("http://localhost:3000/update_data?"+item+"="+element.checked, {"headers": {"Access-Control-Allow-Origin": "*"}});
+    fetch("http://localhost:3000/update_data?"+item+"="+element.checked+"&is_default="+is_default, {"headers": {"Access-Control-Allow-Origin": "*"}});
 }
 
 function save_data() {
@@ -40,7 +40,7 @@ function save_data() {
     var channel = document.getElementById("channel");
     var url = "http://localhost:3000/set_client_config?client_id=" + client_id.value + "&client_secret=" + client_secret.value + "&channel=" + channel.value;
     fetch(url, {"headers": {"Access-Control-Allow-Origin": "*"}});
-    alert("Config updated, please restart the bot to use");
+    alert("Config updated, please restart the bot to use (unless this is the first run)");
 }
 
 function update_repeating_section() {
@@ -240,7 +240,7 @@ async function add_or_remove_changed() {
 
             const content = item["name"];
             const type = item["type"];
-            const frequency = item["data"]["freq_val"];
+            const frequency = item["freq_val"];
 
             const content_element = document.createElement("td");
             const type_element = document.createElement("td");
