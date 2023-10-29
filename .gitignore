@@ -2,3 +2,10 @@
 .idea
 config.json
 token.json
+/output/
+/assets/config.json
+/assets/token.json
+/assets/quotes.json
+/assets/counters.json
+/assets/log.log
+/assets/watchtime.json
