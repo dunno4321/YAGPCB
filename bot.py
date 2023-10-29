@@ -1,22 +1,28 @@
 from datetime import datetime, timedelta
-
-import twitchio
 from twitchio.ext import commands
 from threading import Thread
 import tracemalloc
 import webbrowser
 import requests
+import twitchio
 import logging
 import asyncio
 import random
 import server
 import json
+import re
 
 
 # allow for some better error tracing
 tracemalloc.start()
-date_time_fmt = "%d/%m/%Y %H:%M:%S"
 date_fmt = "%d/%m/%Y"
+time_fmt = "%H:%M:%S"
+date_time_fmt = date_fmt + " " + time_fmt
+eight_ball_responses = ["It is certain", "Don't count on it", "It is decidedly so", "My reply is no", "Without a doubt", "My sources say no", "Yes definitely", "Outlook not so good", "You may rely on it", "Very doubtful", "As I see it, yes", "Most likely", "Outlook promising", "Signs point to yes"]
+
+
+def find_all(string, substring):
+    return [m.start() for m in re.finditer(substring, string)]
 
 
 def dump_token(token):
@@ -36,6 +42,89 @@ def format_quote(quote):
     return f"{quote['streamer']} said '{quote['quote']}' on {quote['date']} (#{quote['num']}), as quoted by {quote['quoter']}"
 
 
+def process_command(msg: twitchio.Message, format: str):
+    # assume 'format' has been validated when the command was added
+    sender = msg.author.name
+    message = msg.content
+    channel = msg.channel.name
+    args = message.split()[1:]
+    # print(sender, message, channel, args)
+    with open("./assets/counters.json") as file:
+        counters = json.load(file)
+    to_return = format.replace("{{by}}", sender).replace("{{channeltime}}", datetime.now().strftime("%I:%M %p")).replace("{{streamer}}", channel)
+    if "{{arg" in to_return:
+        needed_args = find_all(to_return, "{{arg")
+        tmp = []
+        for index in needed_args:
+            tmp2 = to_return[index:]
+            tmp.append(tmp2[:tmp2.index("}}")])
+        tmp = len(list(set(tmp)))
+        if tmp > len(args):
+            return f"Invalid number of arguments provided (needed {tmp}, got {len(args)})"
+        for i in range(len(needed_args)):
+            try:
+                to_return = to_return.replace("{{arg"+str(i+1)+"}}", args[i])
+            except IndexError:
+                pass
+    if "{{random" in to_return:
+        while "{{random" in to_return:
+            index = to_return.index("{{")
+            tmp = to_return[index + 2:]
+            tmp = tmp[:tmp.index("}}")]
+            tmp = tmp.split("_")
+            nums = (int(tmp[1]), int(tmp[2]))
+            num = str(random.randint(nums[0], nums[1]))
+            str_ = "{{random_"+str(nums[0])+"_"+str(nums[1])+"}}"
+            to_return = to_return.replace(str_, num, 1)
+    if "{{increment" in to_return:
+        for index in find_all(to_return, "{{increment"):
+            tmp = to_return[index + 2:]
+            key = tmp[:tmp.index("}}")][len("increment")+1:]
+            if key.lower() in list(counters.keys()):
+                counters[key.lower()] += 1
+            else:
+                counters[key.lower()] = 1
+            to_return = to_return.replace("{{increment_"+key+"}}", str(counters[key]))
+    if "{{math" in to_return:
+        for index in find_all(to_return, "{{math"):
+            tmp = to_return[index + 2:]
+            tmp = tmp[:tmp.index("}}")].split(":")[1]
+            to_return = to_return.replace("{{math:" + tmp + "}}", str(eval(tmp)))
+    with open("./assets/counters.json", "w") as file:
+        json.dump(counters, file, indent=2)
+    return to_return
+
+
+def validate_command_syntax(cmd: str):
+    if len(find_all(cmd, "{{")) != len(find_all(cmd, "}}")):
+        return False, "Amount of {{ != amount of }}"
+    if "{{random" in cmd:
+        for index in find_all(cmd, "{{random"):
+            tmp = cmd[index + 2:]
+            tmp = tmp[:tmp.index("}}")].split("_")[1:]
+            if len(tmp) != 2:
+                return False, "Invalid number of args for {{random_a_b}}"
+            try:
+                nums = (int(tmp[0]), int(tmp[1]))
+                if nums[1] < nums[0]:
+                    return False, "Argument 'a' of {{random_a_b}} must be less than argument 'b'"
+            except ValueError:
+                return False, "Arguments for {{random_a_b}} must be integers!"
+    if "{{increment" in cmd:
+        for index in find_all(cmd, "{{increment"):
+            tmp = cmd[index + 2:]
+            tmp = "_".join(tmp[:tmp.index("}}")][len("increment"):].split("_")[1:]).strip()
+            if len(tmp) == 0:
+                return False, "Missing argument counter_name for {{increment_[counter_name]}}"
+    if "{{counter" in cmd:
+        for index in find_all(cmd, "{{counter"):
+            tmp = cmd[index + 2:]
+            tmp = "_".join(tmp[:tmp.index("}}")][len("counter"):].split("_")[1:]).strip()
+            if len(tmp) == 0:
+                return False, "Missing argument counter_name for {{counter[counter_name]}}"
+    return True, "seems legit"
+
+
 class Bot(commands.Bot):
     default_config = {"client_id": "", "client_secret": "", "channel": ""}
 
@@ -47,6 +136,8 @@ class Bot(commands.Bot):
             self._token = None
         with open("./assets/quotes.json") as file:
             self._quotes = json.load(file)
+        with open("./assets/watchtime.json") as file:
+            self._watchtime = json.load(file)
         self.logger = logging.getLogger("bot")
         self.logger.setLevel(logging.DEBUG)
         self._scopes = [
@@ -73,21 +164,24 @@ class Bot(commands.Bot):
         # incase the streamer created a separate user for the bot
         super().__init__(self._token, prefix="!", client_secret=self._config["client_secret"],
                          initial_channels=[self._config["channel"]])
-        self._user = self._get_user(self.nick)
+        self._user = None
         self._channel_user = self._get_user(self._config["channel"])
         self._channel = self.get_channel(self._config["channel"])
         self._mods = self._get_mods()
         self._vips = self._get_vips()
+        self._last_checked_chatters = datetime.now()
         self._thread = Thread(target=self._worker_thread)
         self._thread.start()
 
     async def event_ready(self):
-        logging.info(f"Logged in as {self.nick} with ID {self.user_id}")
-        logging.info(f"Connected to: {[channel.name for channel in self.connected_channels]}")
+        self._user = self._get_user(self.nick)
+        self.logger.info(f"Logged in as {self.nick} with ID {self.user_id}")
+        self.logger.info(f"Connected to: {[channel.name for channel in self.connected_channels]}")
         # We are logged in and ready to chat and use commands...
         print(f'Logged in as @{self.nick}')
         print(f'User id is {self.user_id}')
         print(f"Connected to these channels: {[channel.name for channel in self.connected_channels]}")
+        self.logger.info(f"Initial chatters: {self.get_chatters()}")
 
     async def event_message(self, msg: twitchio.Message):
         content = msg.content
@@ -101,7 +195,7 @@ class Bot(commands.Bot):
                     self.logger.warning(f"!{cmd_name} not found, probably either removed or another bot")
             else:
                 if matches[0]["enabled"]:
-                    await msg.channel.send(matches[0]["return"])
+                    await msg.channel.send(process_command(msg, matches[0]["return"]))
                 else:
                     await msg.channel.send("command disabled")
 
@@ -113,10 +207,10 @@ class Bot(commands.Bot):
         with open("./assets/quotes.json", "w") as file:
             json.dump(self._misc_data, file, indent=2)
 
-    def _get(self, url):
+    def _get(self, url, **kwargs):
         logging.debug(f"Getting url: {url}")
         return requests.get(url, headers={"Authorization": f"Bearer {self._token}",
-                                          "Client-Id": self._config["client_id"]}).json()
+                                          "Client-Id": self._config["client_id"]}, **kwargs).json()
 
     def _get_mods(self):
         url = f"https://api.twitch.tv/helix/moderation/moderators?broadcaster_id={self._channel_user.id}"
@@ -141,6 +235,18 @@ class Bot(commands.Bot):
         except KeyError:
             logging.error("Token not valid ig, wait a few seconds")
             raise Exception("Twitch token being dumb, wait a few seconds then run again")
+
+    def get_chatters(self):
+        chatters = []
+        params = {"broadcaster_id": str(self._channel_user.id), "moderator_id": str(self._user.id)}
+        while True:
+            res = self._get(f"https://api.twitch.tv/helix/chat/chatters", params=params)
+            chatters.extend([chatter["user_name"] for chatter in res["data"]])
+            if res["pagination"] == {}:
+                break
+            else:
+                params["after"] = res["pagination"]["cursor"]
+        return chatters
 
     def _worker_thread(self):
         while self._running:
@@ -182,6 +288,24 @@ class Bot(commands.Bot):
                         """
                         self.send_message(task["msg_body"])
                     task["next"] = (now + timedelta(minutes=task["freq_val"])).strftime(date_time_fmt)
+
+            if (now - self._last_checked_chatters).total_seconds() > 60:
+                chatters = self.get_chatters()
+                with open("assets/watchtime.json") as file:
+                    watchtime = json.load(file)
+                keys = list(watchtime.keys())
+                updated = []
+                for chatter in chatters:
+                    if chatter in keys:
+                        watchtime[chatter] += 1
+                        updated.append(chatter)
+                chatters = [chatter for chatter in chatters if chatter not in updated]
+                for chatter in chatters:
+                    watchtime[chatter] = 5
+                self._watchtime = watchtime
+                with open("./assets/watchtime.json", "w") as file:
+                    json.dump(watchtime, file, indent=2)
+                self._last_checked_chatters = now
 
     def _is_command_enabled(self, name, is_default):
         return self._server.is_command_enabled(name, is_default)
@@ -452,6 +576,7 @@ class Bot(commands.Bot):
         else:
             await ctx.send("<3 you don't have permission to use this command <3")
 
+    # add_command is a default twitchio command
     @commands.command(aliases=("addcmd", "add_cmd", "add_command", "addcommand"))
     async def add_command_(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -467,8 +592,12 @@ class Bot(commands.Bot):
                 await ctx.send("Please specify the return value!")
             else:
                 if args[0].lower() not in [cmd["name"].lower() for cmd in self._misc_data["custom_commands"]]:
-                    self._add_command(args[0], " ".join(args[1:]))
-                    await ctx.send(f"Successfully added command {args[0]}")
+                    res = validate_command_syntax(ctx.message.content)
+                    if res[0]:
+                        self._add_command(args[0], " ".join(args[1:]))
+                        await ctx.send(f"Successfully added command {args[0]}")
+                    else:
+                        await ctx.send(f"Invalid command syntax: {res[1]}")
                 else:
                     await ctx.send(f"Command '!{args[0]}' already exists!")
         else:
@@ -520,8 +649,7 @@ class Bot(commands.Bot):
                 data["is_enabled"] = content_labels
         if branded_content is not None:
             data["is_branded_content"] = branded_content
-        res = requests.patch('https://api.twitch.tv/helix/channels', params=params, headers=headers,
-                                  json=data)
+        res = requests.patch('https://api.twitch.tv/helix/channels', params=params, headers=headers, json=data)
         if res.status_code >= 300:
             self.logger.error(f"Failed to update channel config with code {res.status_code}")
 
@@ -560,3 +688,57 @@ class Bot(commands.Bot):
                 await ctx.send(f"nuh uh :3 (code error: most likely game doesn't exist on Twitch)")
         else:
             await ctx.send("<3 you don't have permission to use this command")
+
+    @commands.command(aliases=("wt", ))
+    async def watchtime(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!watchtime called by {user}")
+        if not self._is_command_enabled("watchtime", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        if user in list(self._watchtime.keys()):
+            await ctx.send(f"{user} has spent {self._watchtime[user]} minutes watching {self._config['channel']}")
+        else:
+            await ctx.send(f"{user} has spent 0 minutes watching {self._config['channel']}")
+
+    @commands.command()
+    async def love(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        msg = ctx.message.content.split()[1:]
+        self.logger.info(f"!love called by {user}")
+        if not self._is_command_enabled("love", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        if len(msg) == 0:
+            self.logger.warning("No argument specified")
+            await ctx.send("Please specify something you would like to love")
+            return
+        chance = random.randint(0, 100)
+        await ctx.send(f"There is {chance}% love detected between {user} and {msg[0]} <3")
+
+    @commands.command(aliases=("8ball", ))
+    async def eightball(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!8ball called by {user}")
+        if not self._is_command_enabled("8ball", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        await ctx.send(random.choice(eight_ball_responses))
+
+    @commands.command()
+    async def syntax(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        self.logger.info(f"!syntax called by {user}")
+        if user in self._mods or user == ctx.channel.name:
+            if not self._is_command_enabled("syntax", True):
+                self.logger.info("Command disabled")
+                await ctx.send("command disabled")
+                return
+            await ctx.send("{{by}} --> person who sent the message. {{arg1}}, {{arg2}} --> replaces with the arguments after the !{{command}}. {{random_a_b}} --> random int in [a, b]. {{channeltime}} --> streamer's local time. {{increment[counter_name]}} --> increments and replaces with a counter. {{counter_[counter_name]}} --> just the value of the counter. {{streamer}} --> channel name. Things like {{increment_bonk_{{arg1}}}} also work")
+        else:
+            await ctx.send("<3 you don't have permission to use this command <3")
+
+# custom = ["{{by}}", "{{arg1}}, {{arg2}}..", "{{random_a_b}}", "{{channeltime}}", "{{increment_[counter_name]}}", "{{streamer}}", "{{counter_[counter_name]}}"]
