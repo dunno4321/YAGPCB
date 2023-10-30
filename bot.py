@@ -230,7 +230,7 @@ class Bot(commands.Bot):
             return self.create_user(data["id"], data["display_name"])
         except IndexError:
             # user does not exist
-            logging.error(f"USer {username} does not exist!")
+            logging.error(f"User {username} does not exist!")
             return None
         except KeyError:
             logging.error("Token not valid ig, wait a few seconds")
@@ -698,9 +698,15 @@ class Bot(commands.Bot):
             await ctx.send("command disabled")
             return
         if user in list(self._watchtime.keys()):
-            await ctx.send(f"{user} has spent {self._watchtime[user]} minutes watching {self._config['channel']}")
+            time = self._watchtime[user]
+            hours = (time % 60) / 60
+            mins = time % 60
+            if hours > 0:
+                await ctx.send(f"{user} has spent {hours} hours and {mins} minutes watching {self._channel_user.name}")
+            else:
+                await ctx.send(f"{user} has spent {mins} minutes watching {self._channel_user.name}")
         else:
-            await ctx.send(f"{user} has spent 0 minutes watching {self._config['channel']}")
+            await ctx.send(f"{user} has spent 0 minutes watching {self._channel_user.name}")
 
     @commands.command()
     async def love(self, ctx: commands.Context):
@@ -715,8 +721,7 @@ class Bot(commands.Bot):
             self.logger.warning("No argument specified")
             await ctx.send("Please specify something you would like to love")
             return
-        chance = random.randint(0, 100)
-        await ctx.send(f"There is {chance}% love detected between {user} and {msg[0]} <3")
+        await ctx.send(f"There is {random.randint(0, 100)}% love detected between {user} and {msg[0]} <3")
 
     @commands.command(aliases=("8ball", ))
     async def eightball(self, ctx: commands.Context):
@@ -740,5 +745,3 @@ class Bot(commands.Bot):
             await ctx.send("{{by}} --> person who sent the message. {{arg1}}, {{arg2}} --> replaces with the arguments after the !{{command}}. {{random_a_b}} --> random int in [a, b]. {{channeltime}} --> streamer's local time. {{increment[counter_name]}} --> increments and replaces with a counter. {{counter_[counter_name]}} --> just the value of the counter. {{streamer}} --> channel name. Things like {{increment_bonk_{{arg1}}}} also work")
         else:
             await ctx.send("<3 you don't have permission to use this command <3")
-
-# custom = ["{{by}}", "{{arg1}}, {{arg2}}..", "{{random_a_b}}", "{{channeltime}}", "{{increment_[counter_name]}}", "{{streamer}}", "{{counter_[counter_name]}}"]
