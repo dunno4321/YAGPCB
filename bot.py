@@ -765,12 +765,16 @@ class Bot(commands.Bot):
         if len(msg) != 0:
             user = msg[0].replace("@", "").lower()
             if user in list(self._watchtime.keys()) and self._watchtime[user]["points"] != 0:
-                await ctx.send(f"{user} has {self._watchtime[user]['points']} points")
+                sorted_ = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)
+                pos = sorted_.index(user)
+                await ctx.send(f"{user} has {self._watchtime[user]['points']} points (#{pos+1})")
             else:
                 await ctx.send(f"{user} not found")
         else:
             if user in list(self._watchtime.keys()) and self._watchtime[user]["points"] != 0:
-                await ctx.send(f"{user} has {self._watchtime[user]['points']} points")
+                sorted_ = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)
+                pos = sorted_.index(user)
+                await ctx.send(f"{user} has {self._watchtime[user]['points']} points (#{pos+1}")
             else:
                 await ctx.send(f"{user} not found")
 
