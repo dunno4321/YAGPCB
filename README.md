@@ -146,11 +146,11 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - Syntax: `!points [opt - user]`
 - Example:
   - > `somedude: !points`
-  - > `somedude has 20 points`
+  - > `somedude has 20 points (#2)`
   - > `someotherdude: !points`
-  - > `someotherdude has 50 points`
+  - > `someotherdude has 50 points (#1)`
   - > `someotherdude: !points somedude`
-  - > `somedude has 50 points`
+  - > `somedude has 20 points (#2)`
 - Aliases: !p
 
 ### !gamble [points]
