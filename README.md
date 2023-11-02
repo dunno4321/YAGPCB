@@ -103,7 +103,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `Succesfully removed command twitter`
 - Aliases: !remove_cmd, !removecmd, !rmvcmd, !rmv_cmd, !removecommand, !remove_cmd
 
-## !watchtime
+### !watchtime
 - Gives the watchtime of the chatter since the bot was implemented
 - Syntax: `!watchtime`
 - Example:
@@ -113,7 +113,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `someotherdude has spent 2 hours and 49 minutes watching dunno4321`
 - Aliases: !wt
 
-## !love [item]
+### !love [item]
 - Calculates the love between the chatter and [item]
 - Syntax: `!love [item]`
 - Example:
@@ -123,7 +123,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `There is 3% love detected between someotherdude and chatting <3`
 - Aliases: !wt
 
-## !8ball [question]
+### !8ball [question]
 - Consult the 8ball!
 - Syntax: `!8ball [question]`
 - Example:
@@ -133,7 +133,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `Without a doubt`
 - Aliases: !eightball
 
-## !syntax (Mods only)
+### !syntax (Mods only)
 - Gives the syntax on how to add an advanced custom command
 - Syntax: `!syntax`
 - Example:
@@ -141,7 +141,81 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `{{by}} --> person who sent the message. {{arg1}}, {{arg2}} --> replaces with the arguments after the !{{command}}. {{random_a_b}} --> random int in [a, b]. {{channeltime}} --> streamer's local time. {{increment[counter_name]}} --> increments and replaces with a counter. {{counter_[counter_name]}} --> just the value of the counter. {{streamer}} --> channel name. Things like {{increment_bonk_{{arg1}}}} also work`
 - Aliases: none
 
-### Web dashboard
+### !points
+- Returns the amount of points the user has. Higher tier subs get more points
+- Syntax: `!points [opt - user]`
+- Example:
+  - > `somedude: !points`
+  - > `somedude has 20 points`
+  - > `someotherdude: !points`
+  - > `someotherdude has 50 points`
+  - > `someotherdude: !points somedude`
+  - > `somedude has 50 points`
+- Aliases: !p
+
+### !gamble [points]
+- Gambles [points] points on random chance 
+- Syntax: `!gamble [points]`
+- Example (200 initial points for each):
+  - > `somedude: !gamble 50`
+  - > `somedude gambled 50 points and lost them all, resulting in 150 remaining points`
+  - > `someotherdude: !gamble 50`
+  - > `someotherdude gambled 50 points and won 150 points, resulting in 300 points total`
+  - > `someotherdude: !gamble 250`
+  - > `You only have 200 points to gamble!`
+- Aliases: None
+
+### !coinflip [points]
+- Gambles [points] points on a coinflip
+- Syntax: `!coinflip [points]`
+- Example (200 initial points for each):
+  - > `somedude: !coinflip 50`
+  - > `somedude gambled 50 points and lost them all, resulting in 150 remaining points`
+  - > `someotherdude: !coinflip 50`
+  - > `someotherdude gambled 50 points and won, resulting in 250 points total`
+  - > `someotherdude: !coinflip 250`
+  - > `You only have 200 points to gamble!`
+- Aliases: None
+
+### !givepoints [user] [points]
+- Gives [user] [points] points from the user's point amount
+- Syntax: `!givepoints [user] [points]`
+- Example:
+  - > `somedude: !givepoints someotherdude 20`
+  - > `Successfully gave someotherdude 20 points`
+  - > `somedude: !givepoints someotherdude 500`
+  - > `You only have 200 points to give!`
+- Aliases: !gp, give_points
+
+### !modgivepoints [user] [points] (Mods only)
+- Gives [user] [points] points from the Mod Bank™
+- Syntax: `!modgivepoints [user] [points]`
+- Example:
+  - > `somedude: !modgivepoints someotherdude 20`
+  - > `<3 you don't have permission to use this command <3`
+  - > `somemod: !modgivepoints someotherdude 500`
+  - > `Successfully gave someotherdude 500 points`
+- Aliases: !mgp, mod_give_points
+
+### !takepoints [user] [points] (Mods only)
+- Takes [points] points from [user]
+- Syntax: `!takepoints [user] [points]`
+- Example:
+  - > `somedude: !takepoints someotherdude 20`
+  - > `<3 you don't have permission to use this command <3`
+  - > `somemod: !takepoints someotherdude 500`
+  - > `someotherdude now has -300 points.`
+- Aliases: !tp, take_points
+
+### !leaderboard
+- Shows the top 5 users in terms of points
+- Syntax: `!leaderboard`
+- Example:
+  - > `somedude: !leaderboard`
+  - > `#1: dunno4321: 1000 points, #2: somedude: 20 points, #3: someotherdude: -300 points, (etc)`
+- Aliases: !lb
+
+## Web dashboard
 - Go to [http://localhost:3000](http://localhost:3000) for the web configuration
 - Options:
   - Set client id, secret, and channel

@@ -1,3 +1,4 @@
+import copy
 from datetime import datetime, timedelta
 from twitchio.ext import commands
 from threading import Thread
@@ -12,13 +13,14 @@ import server
 import json
 import re
 
-
 # allow for some better error tracing
 tracemalloc.start()
 date_fmt = "%d/%m/%Y"
 time_fmt = "%H:%M:%S"
 date_time_fmt = date_fmt + " " + time_fmt
-eight_ball_responses = ["It is certain", "Don't count on it", "It is decidedly so", "My reply is no", "Without a doubt", "My sources say no", "Yes definitely", "Outlook not so good", "You may rely on it", "Very doubtful", "As I see it, yes", "Most likely", "Outlook promising", "Signs point to yes"]
+eight_ball_responses = ["It is certain", "Don't count on it", "It is decidedly so", "My reply is no", "Without a doubt",
+                        "My sources say no", "Yes definitely", "Outlook not so good", "You may rely on it",
+                        "Very doubtful", "As I see it, yes", "Most likely", "Outlook promising", "Signs point to yes"]
 
 
 def find_all(string, substring):
@@ -34,7 +36,9 @@ def dump_token(token):
 def random_quote(quotes, streamer):
     tmp = [quote for quote in quotes if quote["streamer"] == streamer]
     if len(tmp) == 0:
-        logging.warning("No quotes found!")
+        logger = logging.getLogger("bot")
+        logger.setLevel(logging.DEBUG)
+        logger.warning("No quotes found!")
     return format_quote(random.choice(tmp)) if len(tmp) > 0 else "No quotes found for this streamer!"
 
 
@@ -51,7 +55,9 @@ def process_command(msg: twitchio.Message, format: str):
     # print(sender, message, channel, args)
     with open("./assets/counters.json") as file:
         counters = json.load(file)
-    to_return = format.replace("{{by}}", sender).replace("{{channeltime}}", datetime.now().strftime("%I:%M %p")).replace("{{streamer}}", channel)
+    to_return = format.replace("{{by}}", sender).replace("{{channeltime}}",
+                                                         datetime.now().strftime("%I:%M %p")).replace("{{streamer}}",
+                                                                                                      channel)
     if "{{arg" in to_return:
         needed_args = find_all(to_return, "{{arg")
         tmp = []
@@ -63,7 +69,7 @@ def process_command(msg: twitchio.Message, format: str):
             return f"Invalid number of arguments provided (needed {tmp}, got {len(args)})"
         for i in range(len(needed_args)):
             try:
-                to_return = to_return.replace("{{arg"+str(i+1)+"}}", args[i])
+                to_return = to_return.replace("{{arg" + str(i + 1) + "}}", args[i])
             except IndexError:
                 pass
     if "{{random" in to_return:
@@ -74,17 +80,17 @@ def process_command(msg: twitchio.Message, format: str):
             tmp = tmp.split("_")
             nums = (int(tmp[1]), int(tmp[2]))
             num = str(random.randint(nums[0], nums[1]))
-            str_ = "{{random_"+str(nums[0])+"_"+str(nums[1])+"}}"
+            str_ = "{{random_" + str(nums[0]) + "_" + str(nums[1]) + "}}"
             to_return = to_return.replace(str_, num, 1)
     if "{{increment" in to_return:
         for index in find_all(to_return, "{{increment"):
             tmp = to_return[index + 2:]
-            key = tmp[:tmp.index("}}")][len("increment")+1:]
+            key = tmp[:tmp.index("}}")][len("increment") + 1:]
             if key.lower() in list(counters.keys()):
                 counters[key.lower()] += 1
             else:
                 counters[key.lower()] = 1
-            to_return = to_return.replace("{{increment_"+key+"}}", str(counters[key]))
+            to_return = to_return.replace("{{increment_" + key + "}}", str(counters[key]))
     if "{{math" in to_return:
         for index in find_all(to_return, "{{math"):
             tmp = to_return[index + 2:]
@@ -151,7 +157,8 @@ class Bot(commands.Bot):
             "moderation:read",
             "channel:read:vips",
             "moderator:manage:chat_settings",
-            "moderator:manage:announcements"
+            "moderator:manage:announcements",
+            "channel:read:subscriptions"
         ]
 
         self._loop = asyncio.new_event_loop()
@@ -169,6 +176,7 @@ class Bot(commands.Bot):
         self._channel = self.get_channel(self._config["channel"])
         self._mods = self._get_mods()
         self._vips = self._get_vips()
+        self.loop.create_task(self._get_subscribers())
         self._last_checked_chatters = datetime.now()
         self._thread = Thread(target=self._worker_thread)
         self._thread.start()
@@ -194,7 +202,7 @@ class Bot(commands.Bot):
                 except twitchio.ext.commands.errors.CommandNotFound:
                     self.logger.warning(f"!{cmd_name} not found, probably either removed or another bot")
             else:
-                if matches[0]["enabled"]:
+                if self._is_command_enabled(matches[0]["name"], False):
                     await msg.channel.send(process_command(msg, matches[0]["return"]))
                 else:
                     await msg.channel.send("command disabled")
@@ -204,11 +212,16 @@ class Bot(commands.Bot):
             json.dump(self._quotes, file, indent=2)
 
     def _dump_misc_data(self):
+        # deprecated
         with open("./assets/quotes.json", "w") as file:
             json.dump(self._misc_data, file, indent=2)
 
+    def _dump_watchtime(self):
+        with open("./assets/watchtime.json", "w") as file:
+            json.dump(self._watchtime, file, indent=2)
+
     def _get(self, url, **kwargs):
-        logging.debug(f"Getting url: {url}")
+        self.logger.debug(f"Getting url: {url}")
         return requests.get(url, headers={"Authorization": f"Bearer {self._token}",
                                           "Client-Id": self._config["client_id"]}, **kwargs).json()
 
@@ -223,25 +236,40 @@ class Bot(commands.Bot):
         return [user["user_login"] for user in res["data"]]
 
     def _get_user(self, username):
-        logging.info(f"Attempting to get user {username}")
+        self.logger.info(f"Attempting to get user {username}")
         try:
             data = self._get(f"https://api.twitch.tv/helix/users?login={username}")["data"][0]
-            logging.info(f"Successfully got user {data['display_name']} with ID {data['id']}")
+            self.logger.info(f"Successfully got user {data['display_name']} with ID {data['id']}")
             return self.create_user(data["id"], data["display_name"])
         except IndexError:
             # user does not exist
-            logging.error(f"User {username} does not exist!")
+            self.logger.error(f"User {username} does not exist!")
             return None
         except KeyError:
-            logging.error("Token not valid ig, wait a few seconds")
+            self.logger.error("Token not valid ig, wait a few seconds")
             raise Exception("Twitch token being dumb, wait a few seconds then run again")
+
+    # async because there could be a large amount of subs for a streamer
+    async def _get_subscribers(self):
+        subs = []
+        params = {"broadcaster_id": str(self._channel_user.id)}
+        while True:
+            res = self._get("https://api.twitch.tv/helix/subscriptions", params=params)
+            subs.extend(
+                [{"name": chatter["user_login"], "tier": int(chatter["tier"]) / 1000} for chatter in res["data"]])
+            if res["pagination"] == {}:
+                break
+            else:
+                params["after"] = res["pagination"]["cursor"]
+        subs.append({"name": self._channel_user.name, "tier": 3})
+        self._subs = subs
 
     def get_chatters(self):
         chatters = []
         params = {"broadcaster_id": str(self._channel_user.id), "moderator_id": str(self._user.id)}
         while True:
-            res = self._get(f"https://api.twitch.tv/helix/chat/chatters", params=params)
-            chatters.extend([chatter["user_name"] for chatter in res["data"]])
+            res = self._get("https://api.twitch.tv/helix/chat/chatters", params=params)
+            chatters.extend([chatter["user_login"] for chatter in res["data"]])
             if res["pagination"] == {}:
                 break
             else:
@@ -253,7 +281,7 @@ class Bot(commands.Bot):
             now = datetime.now()
 
             if (datetime.strptime(self._token_data["expires_in"], date_time_fmt) - now).total_seconds() < 120:
-                logging.info("refreshing access token")
+                self.logger.info("refreshing access token")
                 self._token = self._refresh_token()
 
             self._misc_data = self._server.get_data()
@@ -275,7 +303,8 @@ class Bot(commands.Bot):
                             "type": "poll"
                         }
                         """
-                        self.create_poll(task["title"], task["options"], task["duration"], task["c_points_enabled"], task["c_points_per_vote"])
+                        self.create_poll(task["title"], task["options"], task["duration"], task["c_points_enabled"],
+                                         task["c_points_per_vote"])
                     else:
                         """
                         msg: {
@@ -289,22 +318,32 @@ class Bot(commands.Bot):
                         self.send_message(task["msg_body"])
                     task["next"] = (now + timedelta(minutes=task["freq_val"])).strftime(date_time_fmt)
 
-            if (now - self._last_checked_chatters).total_seconds() > 60:
+            if (now - self._last_checked_chatters).total_seconds() > 300:
+                self.loop.create_task(self._get_subscribers())
+                sub_names = [sub["name"] for sub in self._subs]
                 chatters = self.get_chatters()
+
                 with open("assets/watchtime.json") as file:
                     watchtime = json.load(file)
                 keys = list(watchtime.keys())
                 updated = []
                 for chatter in chatters:
-                    if chatter in keys:
-                        watchtime[chatter] += 1
-                        updated.append(chatter)
-                chatters = [chatter for chatter in chatters if chatter not in updated]
+                    name = chatter["user_login"]
+                    if name in keys:
+                        if name in sub_names:
+                            watchtime[chatter["user_login"]]["watchtime"] += [50, 75, 150][self._subs[name]["tier"] - 1]
+                        else:
+                            watchtime[chatter["user_login"]]["watchtime"] += 25
+                        updated.append(chatter["user_login"])
+                chatters = [chatter for chatter in chatters if chatter["user_login"] not in updated]
                 for chatter in chatters:
-                    watchtime[chatter] = 5
+                    if chatter["user_login"] in self._subs:
+                        watchtime[chatter["user_login"]]["watchtime"] = {"watchtime": 1, "points": [2, 5, 10][
+                            self._subs[chatter["user_login"]]["tier"] - 1]}
+                    else:
+                        watchtime[chatter["user_login"]]["watchtime"] = {"watchtime": 1, "points": 1}
                 self._watchtime = watchtime
-                with open("./assets/watchtime.json", "w") as file:
-                    json.dump(watchtime, file, indent=2)
+                self._dump_watchtime()
                 self._last_checked_chatters = now
 
     def _is_command_enabled(self, name, is_default):
@@ -336,18 +375,18 @@ class Bot(commands.Bot):
             while self._server.code is None:
                 pass
             code = self._server.code
-            url = f"""https://id.twitch.tv/oauth2/token/
-                    client_id={self._config['client_id']}
-                    &client_secret={self._config['client_secret']}
-                    &code={code}
-                    &grant_type=authorization_code
-                    &redirect_uri=http://localhost:3000/token""".replace("\n", "").replace(" ", "")
-            res = requests.request("post", url)
+            res = requests.post("https://id.twitch.tv/oauth2/token",
+                                data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={code}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token")
             try:
                 res.raise_for_status()
             except:
+                print(url)
+                print(res.text)
+                print(res.status_code)
                 self.logger.error("Please rerun the bot, this is a weird glitch!")
                 print("Please rerun the bot, this is a weird glitch!")
+                import sys
+                sys.exit(1)
             res = res.json()
             res["expires_in"] = (datetime.now() + timedelta(seconds=(res["expires_in"] - 120))).strftime(
                 date_time_fmt)
@@ -373,6 +412,7 @@ class Bot(commands.Bot):
 
             res = requests.post("https://id.twitch.tv/oauth2/token",
                                 data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={code}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token")
+            # print(res.text)
             res.raise_for_status()
             res = res.json()
             self._token = res["access_token"]
@@ -441,7 +481,9 @@ class Bot(commands.Bot):
             "message": msg,
             "color": color
         }
-        res = requests.post(f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={self._channel_user.id}&moderator_id={self._user.id}", headers=headers, json=json_)
+        res = requests.post(
+            f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={self._channel_user.id}&moderator_id={self._user.id}",
+            headers=headers, json=json_)
         if res.status_code >= 300:
             self.logger.error(f"Failed to create poll with status code: {res.status_code}")
             print(f"Failed to create poll with status code: {res.status_code}")
@@ -452,7 +494,9 @@ class Bot(commands.Bot):
             "Client-Id": self._config["client_id"],
         }
 
-        res = requests.post(f"https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id={self._channel_user.id}&to_broadcaster_id{self._get_user(user).id}&moderator_id={self._user.id}", headers=headers)
+        res = requests.post(
+            f"https://api.twitch.tv/helix/chat/shoutouts?from_broadcaster_id={self._channel_user.id}&to_broadcaster_id{self._get_user(user).id}&moderator_id={self._user.id}",
+            headers=headers)
         if res.status_code >= 300:
             self.logger.error(f"Failed to create poll with status code: {res.status_code}")
             print(f"Failed to create poll with status code: {res.status_code}")
@@ -545,10 +589,10 @@ class Bot(commands.Bot):
                 num = int(num) - 1
                 await ctx.send(format_quote(self._quotes[num]))
             except ValueError:
-                logging.error(f"{num} isn't a valid base 10 integer")
+                self.logger.error(f"{num} isn't a valid base 10 integer")
                 await ctx.send("Argument 'number' is invalid!")
             except IndexError:
-                logging.error(f"{num} > {len(self._quotes)}!")
+                self.logger.error(f"{num} > {len(self._quotes)}!")
                 await ctx.send(f"Only {len(self._quotes)} quotes found!")
 
     @commands.command(aliases=("so",))
@@ -623,7 +667,8 @@ class Bot(commands.Bot):
         else:
             await ctx.send("<3 you don't have permission to use this command")
 
-    async def _update_channel_info(self, game=None, language=None, title=None, tags=None, content_labels=None, content_label_ids=None, content_labels_enabled=None, branded_content=None):
+    async def _update_channel_info(self, game=None, language=None, title=None, tags=None, content_labels=None,
+                                   content_label_ids=None, content_labels_enabled=None, branded_content=None):
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Client-Id": self._config["client_id"],
@@ -654,7 +699,7 @@ class Bot(commands.Bot):
             self.logger.error(f"Failed to update channel config with code {res.status_code}")
 
     # hehe
-    @commands.command(aliases=("tit", ))
+    @commands.command(aliases=("tit",))
     async def title(self, ctx: commands.Context):
         user = ctx.message.author.name
         self.logger.info(f"!title called by {user}")
@@ -689,7 +734,7 @@ class Bot(commands.Bot):
         else:
             await ctx.send("<3 you don't have permission to use this command")
 
-    @commands.command(aliases=("wt", ))
+    @commands.command(aliases=("wt",))
     async def watchtime(self, ctx: commands.Context):
         user = ctx.message.author.name
         self.logger.info(f"!watchtime called by {user}")
@@ -698,8 +743,8 @@ class Bot(commands.Bot):
             await ctx.send("command disabled")
             return
         if user in list(self._watchtime.keys()):
-            time = self._watchtime[user]
-            hours = (time % 60) / 60
+            time = self._watchtime[user]["watchtime"]
+            hours = int((time % 60) / 60)
             mins = time % 60
             if hours > 0:
                 await ctx.send(f"{user} has spent {hours} hours and {mins} minutes watching {self._channel_user.name}")
@@ -708,9 +753,243 @@ class Bot(commands.Bot):
         else:
             await ctx.send(f"{user} has spent 0 minutes watching {self._channel_user.name}")
 
+    @commands.command(aliases=("p",))
+    async def points(self, ctx: commands.Context):
+        user = ctx.message.author.name.lower()
+        msg = ctx.message.content.split()[1:]
+        self.logger.info(f"!points called by {user}")
+        if not self._is_command_enabled("points", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        if len(msg) != 0:
+            user = msg[0].replace("@", "").lower()
+            if user in list(self._watchtime.keys()) and self._watchtime[user]["points"] != 0:
+                await ctx.send(f"{user} has {self._watchtime[user]['points']} points")
+            else:
+                await ctx.send(f"{user} not found")
+        else:
+            if user in list(self._watchtime.keys()) and self._watchtime[user]["points"] != 0:
+                await ctx.send(f"{user} has {self._watchtime[user]['points']} points")
+            else:
+                await ctx.send(f"{user} not found")
+
+    @commands.command()
+    async def gamble(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        multipliers = [0, 0, 0, 0, 0, 2, 2, 2, 3, 3, 3, 5, 5]
+        self.logger.info(f"!points called by {user}")
+        if not self._is_command_enabled("points", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        msg = ctx.message.content.split()
+        if len(msg) == 1:
+            await ctx.send("Please specify an amount to gamble!")
+            return
+        if user in list(self._watchtime.keys()):
+            try:
+                points = self._watchtime[user]["points"]
+                if msg[1].lower() == "all":
+                    amt = points
+                else:
+                    amt = int(msg[1])
+                if amt > points:
+                    await ctx.send(f"You only have {points} points to gamble!")
+                    return
+                points -= amt
+                won = amt * random.choice(multipliers)
+                points += won
+                self._watchtime[user]["points"] = points
+                self._dump_watchtime()
+                if won == 0:
+                    await ctx.send(
+                        f"{user} gambled {amt} points and lost them all, resulting in {points} remaining points")
+                else:
+                    await ctx.send(
+                        f"{user} gambled {amt} points and won {won} points, resulting in {points} points total")
+            except ValueError:
+                await ctx.send(f"{msg[1]} is not a valid integer!")
+        else:
+            await ctx.send(f"{user} has no points to gamble!")
+
+    @commands.command(aliases=("gp", "give_points"))
+    async def givepoints(self, ctx: commands.Context):
+        user = ctx.message.author.name.replace("@", "").lower()
+        self.logger.info(f"!givepoints called by {user}")
+        if not self._is_command_enabled("givepoints", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        msg = ctx.message.content.split()
+        if len(msg) == 1:
+            await ctx.send("Please specify someone to give the points to!")
+            return
+        if len(msg) == 2:
+            await ctx.send("Please specify an amount of points to give!")
+            return
+        if user in list(self._watchtime.keys()):
+            points = self._watchtime[user]["points"]
+            user_ = msg[1].replace("@", "").lower()
+            amt = msg[2]
+            try:
+                if amt.lower() == "all":
+                    amt = points
+                else:
+                    amt = int(amt)
+                if amt > points:
+                    await ctx.send(f"You only have {points} points to give!")
+                    return
+                if amt == 0:
+                    await ctx.send("Cannot give 0 points!")
+                    return
+                if user_.lower() in list(self._watchtime.keys()):
+                    self._watchtime[user_.lower()]["points"] += amt
+                else:
+                    self._watchtime[user_.lower()] = {"watchtime": 1, "points": amt}
+                self._watchtime[user]["points"] -= amt
+                self._dump_watchtime()
+                await ctx.send(f"Successfully gave {user_} {amt} points")
+            except ValueError:
+                await ctx.send(f"{amt} is not a valid integer!")
+        else:
+            await ctx.send(f"{user} has no points to give!")
+
+    @commands.command(aliases=("mgp", "mod_give_points"))
+    async def modgivepoints(self, ctx: commands.Context):
+        user = ctx.message.author.name.replace("@", "").lower()
+        self.logger.info(f"!givepoints called by {user}")
+        if not self._is_command_enabled("givepoints", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        if user not in self._mods and user != self._channel_user.name.lower():
+            await ctx.send("<3 you don't have permission to use this command <3")
+            return
+        msg = ctx.message.content.split()
+        if len(msg) == 1:
+            await ctx.send("Please specify someone to give the points to!")
+            return
+        if len(msg) == 2:
+            await ctx.send("Please specify an amount of points to give!")
+            return
+        if user in list(self._watchtime.keys()):
+            points = self._watchtime[user]["points"]
+            user_ = msg[1].replace("@", "").lower()
+            amt = msg[2]
+            try:
+                if amt.lower() == "all":
+                    amt = points
+                else:
+                    amt = int(amt)
+                if amt == 0:
+                    await ctx.send("Cannot give 0 points!")
+                    return
+                if user_.lower() in list(self._watchtime.keys()):
+                    self._watchtime[user_.lower()]["points"] += amt
+                else:
+                    self._watchtime[user_.lower()] = {"watchtime": 1, "points": amt}
+                self._dump_watchtime()
+                await ctx.send(f"Successfully gave {user_} {amt} points")
+            except ValueError:
+                await ctx.send(f"{amt} is not a valid integer!")
+        else:
+            await ctx.send(f"{user} has no points to give!")
+
+    @commands.command(aliases=("cf", "flip"))
+    async def coinflip(self, ctx: commands.Context):
+        user = ctx.message.author.name
+        multipliers = [0, 2]
+        self.logger.info(f"!coinflip called by {user}")
+        if not self._is_command_enabled("coinflip", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        msg = ctx.message.content.split()
+        if len(msg) == 1:
+            await ctx.send("Please specify an amount to gamble!")
+            return
+        if user in list(self._watchtime.keys()):
+            try:
+                points = self._watchtime[user]["points"]
+                if msg[1].lower() == "all":
+                    amt = points
+                else:
+                    amt = int(msg[1])
+                if amt > points:
+                    await ctx.send(f"You only have {points} points to gamble!")
+                    return
+                points -= amt
+                won = amt * random.choice(multipliers)
+                points += won
+                self._watchtime[user]["points"] = points
+                self._dump_watchtime()
+                if won == 0:
+                    await ctx.send(
+                        f"{user} gambled {amt} points and lost them all, resulting in {points} remaining points")
+                else:
+                    await ctx.send(
+                        f"{user} gambled {amt} points and won, resulting in {points} points total")
+            except ValueError:
+                await ctx.send(f"{msg[1]} is not a valid integer!")
+        else:
+            await ctx.send(f"{user} has no points to gamble!")
+
+    @commands.command(aliases=("tp", "take_points"))
+    async def takepoints(self, ctx: commands.Context):
+        user = ctx.message.author.name.replace("@", "").lower()
+        self.logger.info(f"!takepoints called by {user}")
+        if not self._is_command_enabled("takepoints", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        if user not in self._mods and user != ctx.channel.name:
+            await ctx.send("<3 you don't have permission to use this command <3")
+            return
+        msg = ctx.message.content.split()
+        if len(msg) == 1:
+            await ctx.send("Please specify someone to take the points from!")
+            return
+        if len(msg) == 2:
+            await ctx.send("Please specify an amount of points to take!")
+            return
+        points = self._watchtime[user]["points"]
+        user_ = msg[1]
+        amt = msg[2]
+        try:
+            if amt == "all":
+                amt = points
+            else:
+                amt = int(amt)
+            if amt == 0:
+                await ctx.send("Cannot take 0 points!")
+                return
+            if user_ in list(self._watchtime.keys()):
+                self._watchtime[user_]["points"] -= amt
+            else:
+                self._watchtime[user_] = {"watchtime": 1, "points": -amt}
+            self._dump_watchtime()
+            await ctx.send(f"{user_} now has {self._watchtime[user_]['points']} points.")
+        except ValueError:
+            await ctx.send(f"{amt} is not a valid integer!")
+
+    @commands.command(aliases=("lb",))
+    async def leaderboard(self, ctx: commands.Context):
+        user = ctx.message.author.name.lower()
+        self.logger.info(f"!leaderboard called by {user}")
+        if not self._is_command_enabled("leaderboard", True):
+            self.logger.info("Command disabled")
+            await ctx.send("command disabled")
+            return
+        leaders = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)[:5]
+        # yay one-liners
+        builder = ", ".join(f"#{leaders.index(leader)+1}: {leader}: {self._watchtime[leader]['points']} points" for leader in leaders)
+        self.logger.debug("leaderboard string: " + builder)
+        await ctx.send("Points leaderboard: " + builder)
+
     @commands.command()
     async def love(self, ctx: commands.Context):
-        user = ctx.message.author.name
+        user = ctx.message.author.name.replace("@", "").lower()
         msg = ctx.message.content.split()[1:]
         self.logger.info(f"!love called by {user}")
         if not self._is_command_enabled("love", True):
@@ -723,7 +1002,7 @@ class Bot(commands.Bot):
             return
         await ctx.send(f"There is {random.randint(0, 100)}% love detected between {user} and {msg[0]} <3")
 
-    @commands.command(aliases=("8ball", ))
+    @commands.command(aliases=("8ball",))
     async def eightball(self, ctx: commands.Context):
         user = ctx.message.author.name
         self.logger.info(f"!8ball called by {user}")
@@ -742,6 +1021,7 @@ class Bot(commands.Bot):
                 self.logger.info("Command disabled")
                 await ctx.send("command disabled")
                 return
-            await ctx.send("{{by}} --> person who sent the message. {{arg1}}, {{arg2}} --> replaces with the arguments after the !{{command}}. {{random_a_b}} --> random int in [a, b]. {{channeltime}} --> streamer's local time. {{increment[counter_name]}} --> increments and replaces with a counter. {{counter_[counter_name]}} --> just the value of the counter. {{streamer}} --> channel name. Things like {{increment_bonk_{{arg1}}}} also work")
+            await ctx.send(
+                "{{by}} --> person who sent the message. {{arg1}}, {{arg2}} --> replaces with the arguments after the !{{command}}. {{random_a_b}} --> random int in [a, b]. {{channeltime}} --> streamer's local time. {{increment[counter_name]}} --> increments and replaces with a counter. {{counter_[counter_name]}} --> just the value of the counter. {{streamer}} --> channel name. Things like {{increment_bonk_{{arg1}}}} also work")
         else:
             await ctx.send("<3 you don't have permission to use this command <3")
