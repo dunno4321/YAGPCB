@@ -873,28 +873,21 @@ class Bot(commands.Bot):
         if len(msg) == 2:
             await ctx.send("Please specify an amount of points to give!")
             return
-        if user in list(self._watchtime.keys()):
-            points = self._watchtime[user]["points"]
-            user_ = msg[1].replace("@", "").lower()
-            amt = msg[2]
-            try:
-                if amt.lower() == "all":
-                    amt = points
-                else:
-                    amt = int(amt)
-                if amt == 0:
-                    await ctx.send("Cannot give 0 points!")
-                    return
-                if user_.lower() in list(self._watchtime.keys()):
-                    self._watchtime[user_.lower()]["points"] += amt
-                else:
-                    self._watchtime[user_.lower()] = {"watchtime": 1, "points": amt}
-                self._dump_watchtime()
-                await ctx.send(f"Successfully gave {user_} {amt} points")
-            except ValueError:
-                await ctx.send(f"{amt} is not a valid integer!")
-        else:
-            await ctx.send(f"{user} has no points to give!")
+        user_ = msg[1].replace("@", "").lower()
+        amt = msg[2]
+        try:
+            amt = int(amt)
+            if amt == 0:
+                await ctx.send("Cannot give 0 points!")
+                return
+            if user_.lower() in list(self._watchtime.keys()):
+                self._watchtime[user_.lower()]["points"] += amt
+            else:
+                self._watchtime[user_.lower()] = {"watchtime": 1, "points": amt}
+            self._dump_watchtime()
+            await ctx.send(f"Successfully gave {user_} {amt} points")
+        except ValueError:
+            await ctx.send(f"{amt} is not a valid integer!")
 
     @commands.command(aliases=("cf", "flip"))
     async def coinflip(self, ctx: commands.Context):

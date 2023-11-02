@@ -65,6 +65,41 @@
       "name": "syntax",
       "enabled": true,
       "description": "Gives syntax on how to add an advanced custom command"
+    },
+    {
+      "name": "points",
+      "enabled": true,
+      "description": "Returns the points for the inquiring chatter or specified chatter"
+    },
+    {
+      "name": "givepoints",
+      "enabled": true,
+      "description": "Gives points to a specified user"
+    },
+    {
+      "name": "modgivepoints",
+      "enabled": true,
+      "description": "(mods only) Gives points to a specified user from the Mod Bank (trademark pending)"
+    },
+    {
+      "name": "takepoints",
+      "enabled": true,
+      "description": "(mods only) Takes points from a user"
+    },
+    {
+      "name": "gamble",
+      "enabled": true,
+      "description": "Gambles some points with the chance of winning up to 5x the amount gambled or losing it all"
+    },
+    {
+      "name": "coinflip",
+      "enabled": true,
+      "description": "Gambles some points on a 50/50 chance basis"
+    },
+    {
+      "name": "leaderboard",
+      "enabled": true,
+      "description": "Shows the points of the top 5 chatters"
     }
   ],
   "repeating_tasks": []
