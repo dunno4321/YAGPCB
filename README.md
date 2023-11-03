@@ -3,7 +3,7 @@
 
 
 ## Installation
-You can either follow these steps to build & run it OR go to the Releases tab and download YAGPCBv2-1.exe and follow the instructions there
+You can either follow these steps to build & run it OR go to the Releases tab and download the .exe file and follow the instructions there
 1. Download and install this by clicking (on GitHub) code --> download ZIP, and extract it to a known location
 2. [Install Python](https://www.digitalocean.com/community/tutorials/install-python-windows-10)
 3. [Install PIP](https://www.geeksforgeeks.org/how-to-install-pip-on-windows/#). It should install with Python, but it's better to check
@@ -22,11 +22,10 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 3. Type `python main.py` into the command prompt
 4. It will ask you to click the link to authorize the bot with Twitch
 5. Click the link and follow the instructions to authorize the bot
-6. When you are done, you might see an error in command prompt about a JSON parse error. This is normal, no I don't know why it does that, just close command prompt and rerun the bot
-7. The bot should connect and print some debug info about the username and user ID of the bot.
-8. You should now be able to type !ping into your chat and have the bot respond with Pong!
-9. If something doesn't work, go to assets/log.log and do a ctrl+F for "error" or DM me on Discord @dunno4321 with the log file
-10. The web dashboard is located at [https://localhost:3000](https://localhost:3000)
+6. The bot should connect and print some debug info about the username and user ID of the bot.
+7. You should now be able to type !ping into your chat and have the bot respond with Pong!
+8. If something doesn't work, go to assets/log.log and do a ctrl+F for "error" or DM me on Discord @dunno4321 with the log file
+9. The web dashboard is located at [https://localhost:3000](https://localhost:3000)
 
 ## Commands
 
@@ -76,7 +75,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - {{arg1}}, {{arg2}} --> arguments provided in the message calling the command
 - {{random_a_b}} --> random number from a to b, inclusive
 - {{channeltime}} --> channel local time
-- {{increment_[counter]}} --> increments a counter. Things like {{increment_bonk_{{arg1}}}} also work
+- {{increment_[counter]}} --> increments & displays a counter. Things like {{increment_bonk_{{arg1}}}} also work
 - {{counter_[counter]}} --> displays a counter. Things like {{counter_bonk_{{arg1}}}} also work
 - {{streamer}} --> channel name
 - Examples:
@@ -216,7 +215,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - Aliases: !lb
 
 ## Web dashboard
-- Go to [http://localhost:3000](http://localhost:3000) for the web configuration
+- Go to [http://localhost:3000](http://localhost:3000) for the web configuration & things like repeating messages/polls
 - Options:
   - Set client id, secret, and channel
   - ![img.png](readme_pics/img.png)
