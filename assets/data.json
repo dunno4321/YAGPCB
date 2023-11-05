@@ -100,6 +100,46 @@
       "name": "leaderboard",
       "enabled": true,
       "description": "Shows the points of the top 5 chatters"
+    },
+    {
+      "name": "raffle",
+      "enabled": true,
+      "description": "Starts a raffle for 5000 points with up to 5 winners (amt won+max winners to be changeable in the future)"
+    },
+    {
+      "name": "cancelraffle",
+      "enabled": true,
+      "description": "Cancels the current raffle"
+    },
+    {
+      "name": "sraffle",
+      "enabled": true,
+      "description": "Starts a raffle for 5000 points with one winner (amt won to be changeable in the future)"
+    },
+    {
+      "name": "join",
+      "enabled": true,
+      "description": "Joins the current raffle"
+    },
+    {
+      "name": "giveaway",
+      "enabled": true,
+      "description": "Shows info about the current giveaway"
+    },
+    {
+      "name": "enter",
+      "enabled": true,
+      "description": "Enters the current giveaway"
+    },
+    {
+      "name": "timer",
+      "enabled": true,
+      "description": "Starts a timer"
+    },
+    {
+      "name": "canceltimers",
+      "enabled": true,
+      "description": "Cancels all timers"
     }
   ],
   "repeating_tasks": []

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from threading import Thread
 from flask_cors import CORS
 import logging
+import random
 import copy
 import json
 
@@ -15,7 +16,12 @@ date_time_fmt = "%d/%m/%Y %H:%M:%S"
 
 def dump_data(data):
     with open("./assets/data.json", "w") as file:
-        json.dump(data, file, indent=2)
+        json.dump(data, file)
+
+
+def dump_giveaway(data):
+    with open("./assets/giveaway.json", "w") as file:
+        json.dump(data, file)
 
 
 def parse(url_):
@@ -78,7 +84,7 @@ def token():
     if "code" in list(params.keys()):
         inst.code = params["code"]
         with open("./assets/token.json", "w") as file:
-            json.dump(params, file, indent=2)
+            json.dump(params, file)
         logger.info("Successfully got code!")
         return jsonify({"success": True, "msg": "code yoinked"})
     else:
@@ -166,6 +172,40 @@ def add_msg():
     return jsonify({"success": True, "message": "success"})
 
 
+@app.route("/get_giveaway")
+def get_giveaway():
+    inst = get_server_instance()
+    inst.refresh_giveaway_data()
+    data = copy.deepcopy(inst.get_giveaway_data())
+    if data != {}:
+        data["entrants"] = len(list(data["entrants"].keys()))
+    return jsonify(data if data != {} else {"active": False})
+
+
+@app.route("/add_giveaway", methods=["POST"])
+def add_giveaway():
+    inst = get_server_instance()
+    inst.set_giveaway_data(request.json)
+    return jsonify({"success": True, "msg": "added giveaway"})
+
+
+@app.route("/cancel_giveaway")
+def cancel_giveaway():
+    inst = get_server_instance()
+    inst.cancel_giveaway()
+    return jsonify({"success": True, "msg": "Successfully cancelled the giveaway"})
+
+
+@app.route("/end_giveaway")
+def end_giveaway():
+    inst = get_server_instance()
+    winner, msg = inst.end_giveaway()
+    if winner:
+        return jsonify({"success": True, "msg": "Successfully ended the giveaway", "winner": winner})
+    else:
+        return jsonify({"success": False, "msg": msg})
+
+
 def get_server_instance():
     if Server.instance is None:
         Server.instance = Server()
@@ -196,6 +236,11 @@ class Server:
 
         self.thread = Thread(target=self.app.run, kwargs={"host": "0.0.0.0", "port": 3000})
         self.thread.start()
+
+        with open("./assets/giveaway.json") as file:
+            self.giveaway_data = json.load(file)
+        self.cancel_giveaway_ = None
+        self.end_giveaway_ = None
 
     def set_config(self, config):
         self.config = config
@@ -256,3 +301,38 @@ class Server:
         if len(commands_) == 0:
             return False
         return commands_[0]["enabled"]
+
+    def refresh_giveaway_data(self):
+        with open("./assets/giveaway.json") as file:
+            self.giveaway_data = json.load(file)
+
+    def get_giveaway_data(self):
+        return self.giveaway_data
+
+    def set_giveaway_data(self, data):
+        try:
+            data["ticket_cost"] = int(data["ticket_cost"])
+        except ValueError:
+            data["ticket_cost"] = 50
+        data["active"] = True
+        data["entrants"] = {}
+        self.giveaway_data = data
+        dump_giveaway(data)
+
+    def cancel_giveaway(self):
+        self.cancel_giveaway_ = True
+        if self.giveaway_data is not None:
+            self.giveaway_data["active"] = False
+            logger.info(f"Cancelled active giveaway: {self.giveaway_data['title']}")
+            dump_giveaway(self.giveaway_data)
+
+    def end_giveaway(self):
+        self.end_giveaway_ = True
+        if self.giveaway_data is not None:
+            self.giveaway_data["active"] = False
+            winner = random.choice(list(self.giveaway_data["entrants"].keys()))
+            self.giveaway_data["winner"] = winner
+            logger.info(f"Giveaway {self.giveaway_data['title']} ended with a winner of {winner}")
+            dump_giveaway(self.giveaway_data)
+            return winner, ""
+        return False, "No active giveaway"

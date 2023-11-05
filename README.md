@@ -214,11 +214,88 @@ You can either follow these steps to build & run it OR go to the Releases tab an
   - > `#1: dunno4321: 1000 points, #2: somedude: 20 points, #3: someotherdude: -300 points, (etc)`
 - Aliases: !lb
 
+### !raffle
+- Starts a raffle with up to 5 winners for 5000 bot points
+- Syntax: `!raffle`
+- Example:
+  - > `somemod: !raffle`
+  - > `New Multi-Raffle for 5000 points! Type !join to join! Ends in 30 seconds! PogChamp`
+- Aliases: None
+
+### !sraffle
+- Starts a raffle with up 1 winner for 5000 bot points
+- Syntax: `!sraffle`
+- Example:
+  - > `somemod: !sraffle`
+  - > `New Single-Raffle for 5000 points! Type !join to join! PogChamp`
+- Aliases: !singleraffle, !single_raffle
+
+### !cancelraffle
+- Cancels the currently running raffle
+- Syntax: `!cancelraffle`
+- Example:
+  - > `somemod: !cancelraffle`
+  - > `Raffle cancelled`
+- Aliases: !cr, !cancel_raffle
+
+### !join
+- Joins the currently running raffle
+- Syntax: `!join`
+- Example:
+  - > `somemod: !raffle`
+  - > `New Multi-Raffle for 5000 points! Type !join to join! Ends in 30 seconds! PogChamp`
+  - > `somedude: !join`
+- Aliases: None
+
+### !giveaway
+- Returns info about the currently running giveaway
+- Syntax: `!giveaway`
+- Example:
+  - `[giveaway active]`
+  - > `somedude: !giveaway`
+  - > `[the giveaway description]`
+  - `[no giveaway active]`
+  - > `somedude: !giveaway`
+  - > `No active giveaway found!`
+- Aliases: None
+
+### !enter [ticket amount]
+- Enters the currently running giveaway
+- Syntax: `!enter [number of tickets/"max"]`
+- Example:
+  - `[giveaway active]`
+  - > `somedude: !enter 5`
+  - > `Successfully purchased 5 tickets for a total of 5 tickets`
+  - `[no giveaway active]`
+  - > `somedude: !enter 5`
+  - > `No active giveaway found!`
+- Aliases: !ticket
+
+### !timer [minutes]
+- Starts a timer for [minutes] minutes (80% working - to be fixed)
+- Syntax: `!timer [minutes]`
+  - Example:
+    - > `somemod: !timer 5`
+    - > `Created a 5 minute timer (timer #1)`
+- Aliases: None
+
+### !canceltimers
+- Cancels all running timers
+- Syntax: `!canceltimers`
+  - Example:
+    - > `somemod: !canceltimer`
+    - > `Cancelled all running timers`
+- Aliases: !canceltimer, !cts, !ct, !cancel_timer, !cancel_timers
+
 ## Web dashboard
 - Go to [http://localhost:3000](http://localhost:3000) for the web configuration & things like repeating messages/polls
 - Options:
   - Set client id, secret, and channel
-  - ![img.png](readme_pics/img.png)
+    - ![img.png](readme_pics/img.png)
+  - Manage a giveaway
+    - ![img.png](readme_pics/img_5.png)
+    - ![img.png](readme_pics/img_6.png)
+    - ![img.png](readme_pics/img_7.png)
   - add/remove repeating messages/polls
     - ![img_1.png](readme_pics/img_1.png)
     - ![img_2.png](readme_pics/img_2.png)
@@ -231,6 +308,9 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - Check log.log (do a ctrl+f for "error") and/or DM me on Discord with the log file
 
 ## Todos:
-- Web UI for configuration (done)
-  - Move Flask app inside of bot.py to be run with bot.Bot (done)
-- Option for auto polls like "is audio good?" (done)
+- custom point redeems (v2.4?)
+- organize all .json into one .json? (v2.4? v3.0?)
+- change logging to not be INFO always lol (v2.3)
+- build v2.3 with autopytoexe
+- add comments?
+- Fix timers

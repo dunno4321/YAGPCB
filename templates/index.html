@@ -101,6 +101,10 @@ function submit_poll() {
         alert("Please set poll frequency!");
         return;
     }
+    if (duration <= 0) {
+        alert("Frequency must be > 0");
+        return;
+    }
     var counter = 0;
     var options_text = [];
     while (counter < options.length) {
@@ -150,6 +154,10 @@ function submit_msg() {
     }
     if (frequency_value == "") {
         alert("Please set message frequency!");
+        return;
+    }
+    if (frequency_value <= 0) {
+        alert("Frequency must be > 0");
         return;
     }
     data = {
@@ -265,14 +273,134 @@ async function add_or_remove_changed() {
         var bruuuuuh = []
         for (const child of remove_table.children) {
             // >:3
-            if (bruh.includes(child.id)) {
+            if (bruuuuuh.includes(child.id)) {
                 child.remove();
             } else {
-                bruh.push(child.id);
+                bruuuuuh.push(child.id);
             }
         }
     }
 }
+
+async function get_giveaway() {
+    var tmp = await fetch("http://localhost:3000/get_giveaway");
+    return await tmp.json();
+}
+
+async function cancel_giveaway() {
+    var tmp = await fetch("http://localhost:3000/cancel_giveaway");
+    var res = await tmp.json();
+    if (res["success"]) {
+        for (const child of document.getElementById("giveaway_data").children) {
+            child.remove();
+        }
+        alert("Giveaway cancelled");
+    } else {
+        alert("Failed to end giveaway: " + res["msg"]);
+    }
+}
+
+async function end_giveaway() {
+    var tmp = await fetch("http://localhost:3000/end_giveaway");
+    var res = await tmp.json();
+    if (res["success"]) {
+        for (const child of document.getElementById("giveaway_data").children) {
+            child.remove();
+        }
+        alert("Giveaway winner: " + res["winner"]);
+    } else {
+        alert("Failed to end giveaway: " + res["msg"]);
+    }
+}
+
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function load_giveaway() {
+    await sleep(5);
+    var if_giveaway = document.getElementById("if_giveaway");
+    var if_not_giveaway = document.getElementById("if_not_giveaway");
+    try {
+        giveaway = await get_giveaway();
+    } catch (error) {
+        console.log("network error :3");
+        return;
+    }
+    if (giveaway["active"]){
+        if_giveaway.hidden = false;
+        if_not_giveaway.hidden = true;
+
+        const tmp = document.createElement("tr");
+        const cancel_button = document.createElement("button");
+        const end_button = document.createElement("button");
+        cancel_button.onclick = cancel_giveaway;
+        cancel_button.innerHTML = "Cancel giveaway";
+        end_button.onclick = end_giveaway;
+        end_button.innerHTML = "End giveaway";
+
+        const title_element = document.createElement("td");
+        const description_element = document.createElement("td");
+        const entrants_element = document.createElement("td");
+        const cancel_element = document.createElement("td");
+        const end_element = document.createElement("td");
+
+        title_element.innerHTML = giveaway["title"];
+        description_element.innerHTML = giveaway["description"];
+        entrants_element.innerHTML = giveaway["entrants"];
+        cancel_element.appendChild(cancel_button);
+        end_element.appendChild(end_button);
+
+        tmp.appendChild(title_element);
+        tmp.appendChild(description_element);
+        tmp.appendChild(entrants_element);
+        tmp.appendChild(cancel_element);
+        tmp.appendChild(end_element);
+
+        document.getElementById("giveaway_data").appendChild(tmp);
+    } else {
+        // easy
+        if_giveaway.hidden = true;
+        if_not_giveaway.hidden = false;
+    }
+}
+
+async function submit_giveaway() {
+    title = document.getElementById("giveaway_title").value;
+    description = document.getElementById("giveaway_description").value;
+    ticket_cost = document.getElementById("ticket_cost").value;
+    if (title == "") {
+        alert("Please set a title");
+        document.getElementById("giveaway_submitted_text").style = "display:none";
+        return;
+    }
+    if (description == "") {
+        alert("Please set a description");
+        document.getElementById("giveaway_submitted_text").style = "display:none";
+        return;
+    }
+    if (ticket_cost == "") {
+        alert("Please set a ticket cost");
+        document.getElementById("giveaway_submitted_text").style = "display:none";
+        return;
+    }
+
+    var res = await fetch("http://localhost:3000/add_giveaway", {
+        method: "POST",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({"title": title, "description": description, "ticket_cost": ticket_cost})
+    });
+    res = await res.json();
+    if (!res["success"]) {
+        document.getElementById("giveaway_submitted_text").innerHTML = "Error submitting giveaway: " + res["msg"];
+    } else {
+        document.getElementById("giveaway_submitted_text").innerHTML = "Giveaway submitted";
+    }
+}
+
+window.onload = load_giveaway();
 </script>
 <head>
 <title>YAGBCB config page</title>
@@ -288,9 +416,39 @@ async function add_or_remove_changed() {
     Channel name: <input id="channel" value="{{channel}}"><br>
     <button id="set_config" onclick="save_data()">Save</button>
 </div>
-
+<div id="giveaway_div">
+    <h3>Manage giveaway</h3>
+    <div id="if_giveaway" hidden="">
+        <table id="giveaway_table">
+            <thead>
+                <tr>
+                    <td>Title</td>
+                    <td>Description</td>
+                    <td>Entrants</td>
+                    <td>Cancel</td>
+                    <td>End & choose winner</td>
+                </tr>
+            </thead>
+            <tbody id="giveaway_data">
+                <!-- dynamic population -->
+            </tbody>
+        </table>
+    </div>
+    <div id="if_not_giveaway">
+        <p style="font-size:16px">Create a giveaway</p>
+        Title:
+        <input id="giveaway_title" placeholder="Steam code giveaway"><br>
+        Description:
+        <input id="giveaway_description" placeholder="Win a Steam code for..."><br>
+        Ticket cost (points):
+        <input id="ticket_cost" type="number" size="8" placeholder="50">
+        <br>
+        <button id="submit_giveaway" onclick='document.getElementById("giveaway_submitted_text").style="";submit_giveaway()'>Submit</button>
+        <p id="giveaway_submitted_text" style="display:none">Submitting...</p>
+    </div>
+</div>
 <div id="add_repeating_tasks">
-<!--    end result: [add/remove] a [repeating poll/repeating/message] every [input] [minutes/hours]-->
+<!--    end result: [add/remove] a [repeating poll/message] every [input] [minutes/hours]-->
     <h3>Add repeating tasks</h3>
     <select id="add_or_remove" onchange="add_or_remove_changed()">
         <option id="add">Add</option>
