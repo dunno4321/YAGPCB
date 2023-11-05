@@ -99,6 +99,15 @@ def process_command(msg: twitchio.Message, format: str):
             tmp = to_return[index + 2:]
             tmp = tmp[:tmp.index("}}")].split(":")[1]
             to_return = to_return.replace("{{math:" + tmp + "}}", str(eval(tmp)))
+    if "{{counter" in to_return:
+        for index in find_all(to_return, "{{counter"):
+            tmp = to_return[index + 2:]
+            key = tmp[:tmp.index("}}")][len("counter")+1:]
+            if key.lower() in list(counters.keys()):
+                value = counters[key.lower()]
+            else:
+                value = 0
+            to_return = to_return.replace("{{counter_"+key+"}}", str(value))
     with open("./assets/counters.json", "w") as file:
         json.dump(counters, file)
     return to_return

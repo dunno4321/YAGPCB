@@ -9,12 +9,13 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 3. [Install PIP](https://www.geeksforgeeks.org/how-to-install-pip-on-windows/#). It should install with Python, but it's better to check
 4. Open File Explorer and navigate to this folder
 5. In the address bar, type "cmd"
-6. Type "python -m pip install -r requirements.txt" into Command Prompt. This will install the required libraries
-    - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store
+6. Type "`python -m pip install -r requirements.txt`" into Command Prompt. This will install the required libraries
+    - If it returns something like "python is not recognized as a...", try running just `python` and install it from the Microsoft Store or try restarting your PC
 7. When that has finished installing, follow [these steps](https://dev.twitch.tv/docs/authentication/register-app/) to create & register a bot and take note of your `client_id` and your `client_secret`
 8. Set "OAuth Redirect URL" to "https://localhost:3000/token"
 9. To connect with twitch, run the bot with `python main.py` and navigate to [https://localhost:3000](https://localhost:3000) in your web browser
-10. Enter the client id, secret, and your channel name. All of this data is stored locally in assets/config.json and only in assets/config.json
+10. Enter the client id, secret, and your channel name and click Save. All of this data is stored locally in assets/config.json
+11. The bot should connect and print some information (the bot's username, user id, and connected channels)
 
 ## Running the bot
 1. Open this folder in File Explorer
@@ -310,7 +311,4 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 ## Todos:
 - custom point redeems (v2.4?)
 - organize all .json into one .json? (v2.4? v3.0?)
-- change logging to not be INFO always lol (v2.3)
-- build v2.3 with autopytoexe
 - add comments?
-- Fix timers
