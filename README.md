@@ -273,7 +273,7 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - Aliases: !ticket
 
 ### !timer [minutes]
-- Starts a timer for [minutes] minutes (80% working - to be fixed)
+- Starts a timer for [minutes] minutes
 - Syntax: `!timer [minutes]`
   - Example:
     - > `somemod: !timer 5`
