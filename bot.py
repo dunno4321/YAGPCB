@@ -1,8 +1,6 @@
-import copy
 from datetime import datetime, timedelta
 from twitchio.ext import commands
 from threading import Thread
-import tracemalloc
 import webbrowser
 import requests
 import twitchio
@@ -11,16 +9,17 @@ import asyncio
 import random
 import server
 import json
+import copy
 import re
 
-# allow for some better error tracing
-tracemalloc.start()
+# constants
 date_fmt = "%d/%m/%Y"
 time_fmt = "%H:%M:%S"
 date_time_fmt = date_fmt + " " + time_fmt
 eight_ball_responses = ["It is certain", "Don't count on it", "It is decidedly so", "My reply is no", "Without a doubt",
                         "My sources say no", "Yes definitely", "Outlook not so good", "You may rely on it",
                         "Very doubtful", "As I see it, yes", "Most likely", "Outlook promising", "Signs point to yes"]
+# TODO: allow changing
 raffle_length = 30
 raffle_points = 5000
 max_winners = 5
@@ -55,58 +54,69 @@ def process_command(msg: twitchio.Message, format: str):
     message = msg.content
     channel = msg.channel.name
     args = message.split()[1:]
-    # print(sender, message, channel, args)
     with open("./assets/counters.json") as file:
         counters = json.load(file)
+    # format constants
     to_return = format.replace("{{by}}", sender).replace("{{channeltime}}",
                                                          datetime.now().strftime("%I:%M %p")).replace("{{streamer}}",
                                                                                                       channel)
     if "{{arg" in to_return:
         needed_args = find_all(to_return, "{{arg")
         tmp = []
+        # find all things like {{arg1}}, {{arg2}}
         for index in needed_args:
             tmp2 = to_return[index:]
             tmp.append(tmp2[:tmp2.index("}}")])
+        # make list of the unique {{arg[num]}}s (to allow for double {{arg1}} usage and stuff)
         tmp = len(list(set(tmp)))
         if tmp > len(args):
             return f"Invalid number of arguments provided (needed {tmp}, got {len(args)})"
+        # replace the args with the provided arguments
         for i in range(len(needed_args)):
             try:
                 to_return = to_return.replace("{{arg" + str(i + 1) + "}}", args[i])
             except IndexError:
                 pass
+    # format the {{random_a_b}} to a random.randint(a, b)
     if "{{random" in to_return:
         while "{{random" in to_return:
+            # locate the {{random_a_b}}
             index = to_return.index("{{")
             tmp = to_return[index + 2:]
             tmp = tmp[:tmp.index("}}")]
             tmp = tmp.split("_")
-            nums = (int(tmp[1]), int(tmp[2]))
+            # get the numbers and the random number
+            nums = [int(tmp[1]), int(tmp[2])]
+            # random.randint doesn't like it when b > a
+            nums.sort()
             num = str(random.randint(nums[0], nums[1]))
             str_ = "{{random_" + str(nums[0]) + "_" + str(nums[1]) + "}}"
             to_return = to_return.replace(str_, num, 1)
+    # increment the counters
     if "{{increment" in to_return:
         for index in find_all(to_return, "{{increment"):
+            # find
             tmp = to_return[index + 2:]
             key = tmp[:tmp.index("}}")][len("increment") + 1:]
+            # increment
             if key.lower() in list(counters.keys()):
                 counters[key.lower()] += 1
             else:
                 counters[key.lower()] = 1
+            # replace
             to_return = to_return.replace("{{increment_" + key + "}}", str(counters[key]))
-    if "{{math" in to_return:
-        for index in find_all(to_return, "{{math"):
-            tmp = to_return[index + 2:]
-            tmp = tmp[:tmp.index("}}")].split(":")[1]
-            to_return = to_return.replace("{{math:" + tmp + "}}", str(eval(tmp)))
+    # display a counter
     if "{{counter" in to_return:
         for index in find_all(to_return, "{{counter"):
+            # find
             tmp = to_return[index + 2:]
             key = tmp[:tmp.index("}}")][len("counter")+1:]
+            # get value
             if key.lower() in list(counters.keys()):
                 value = counters[key.lower()]
             else:
                 value = 0
+            # replace
             to_return = to_return.replace("{{counter_"+key+"}}", str(value))
     with open("./assets/counters.json", "w") as file:
         json.dump(counters, file)
