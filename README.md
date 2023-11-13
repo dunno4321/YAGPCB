@@ -311,4 +311,5 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 ## Todos:
 - custom point redeems (v2.4?)
 - organize all .json into one .json? (v2.4? v3.0?)
-- add comments?
+- comment the code, dangit
+- Websockets to handle subscriptions & whatnot (needs outward-facing IP - repl.it? port forwarding?)
