@@ -314,3 +314,5 @@ You can either follow these steps to build & run it OR go to the Releases tab an
 - comment the code, dangit
 - Websockets to handle subscriptions & whatnot (needs outward-facing IP - repl.it? port forwarding?)
 - Custom chat responses (e.g. [something] --> [response])
+- allow raffle customization
+- 

@@ -86,9 +86,7 @@ def process_command(msg: twitchio.Message, format: str):
             tmp = tmp[:tmp.index("}}")]
             tmp = tmp.split("_")
             # get the numbers and the random number
-            nums = [int(tmp[1]), int(tmp[2])]
-            # random.randint doesn't like it when b > a
-            nums.sort()
+            nums = (int(tmp[1]), int(tmp[2]))
             num = str(random.randint(nums[0], nums[1]))
             str_ = "{{random_" + str(nums[0]) + "_" + str(nums[1]) + "}}"
             to_return = to_return.replace(str_, num, 1)
@@ -124,6 +122,7 @@ def process_command(msg: twitchio.Message, format: str):
 
 
 def validate_command_syntax(cmd: str):
+    # somewhat self-explanatory with the error messages
     if len(find_all(cmd, "{{")) != len(find_all(cmd, "}}")):
         return False, "Amount of {{ != amount of }}"
     if "{{random" in cmd:
@@ -141,6 +140,7 @@ def validate_command_syntax(cmd: str):
     if "{{increment" in cmd:
         for index in find_all(cmd, "{{increment"):
             tmp = cmd[index + 2:]
+            # bs one-liner
             tmp = "_".join(tmp[:tmp.index("}}")][len("increment"):].split("_")[1:]).strip()
             if len(tmp) == 0:
                 return False, "Missing argument counter_name for {{increment_[counter_name]}}"
@@ -149,16 +149,19 @@ def validate_command_syntax(cmd: str):
             tmp = cmd[index + 2:]
             tmp = "_".join(tmp[:tmp.index("}}")][len("counter"):].split("_")[1:]).strip()
             if len(tmp) == 0:
-                return False, "Missing argument counter_name for {{counter[counter_name]}}"
+                return False, "Missing argument counter_name for {{counter_[counter_name]}}"
     return True, "seems legit"
 
 
+# here we go, bois
 class Bot(commands.Bot):
     default_config = {"client_id": "", "client_secret": "", "channel": ""}
+    # allow access from server.py
     raffle_participants_ = []
     raffle_winner = ""
 
     def __init__(self, config_file):
+        # load up config
         with open(config_file) as file:
             self._config = json.load(file)
         with open("./assets/token.json") as file:
@@ -168,6 +171,7 @@ class Bot(commands.Bot):
             self._quotes = json.load(file)
         with open("./assets/watchtime.json") as file:
             self._watchtime = json.load(file)
+        # setup logger & constants
         self.logger = logging.getLogger("bot")
         self.logger.setLevel(logging.root.getEffectiveLevel())
         self._scopes = [
@@ -185,14 +189,15 @@ class Bot(commands.Bot):
             "channel:read:subscriptions"
         ]
 
+        # setup a loop for use when sending messages
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)
 
+        # more constants & setup
         self._running = True
         self._server = server.get_server_instance()
         self._misc_data = self._server.get_data()
         self._token = self._get_token()
-        # incase the streamer created a separate user for the bot
         super().__init__(self._token, prefix="!", client_secret=self._config["client_secret"],
                          initial_channels=[self._config["channel"]])
         self._user = None
@@ -208,36 +213,49 @@ class Bot(commands.Bot):
         self._active_timers = False
         self._timer_end_times = []
         self._giveaway_data = self._server.get_giveaway_data()
+        # there might be a lot of subscribers so an async task works well here
         self.loop.create_task(self._get_subscribers())
+        # start the worker thread
         self._thread = Thread(target=self._worker_thread)
         self._thread.start()
 
     async def event_ready(self):
+        # print debug info
         self._user = self._get_user(self.nick)
         self.logger.info(f"Logged in as {self.nick} with ID {self.user_id}")
         self.logger.info(f"Connected to: {[channel.name for channel in self.connected_channels]}")
-        # We are logged in and ready to chat and use commands...
+        self.logger.info(f"Initial chatters: {self.get_chatters()}")
+
         print(f'Logged in as @{self.nick}')
         print(f'User id is {self.user_id}')
         print(f"Connected to these channels: {[channel.name for channel in self.connected_channels]}")
-        self.logger.info(f"Initial chatters: {self.get_chatters()}")
 
     async def event_message(self, msg: twitchio.Message):
         content = msg.content
-        cmd_name = content.split()[0].replace("!", "").lower()
+        # check for if it's a command
         if content.startswith("!"):
+            # get the command name
+            cmd_name = content.split()[0].replace("!", "").lower()
+            # check for custom command
+            # do this first to override the default commands
             matches = [cmd for cmd in self._misc_data["custom_commands"] if cmd["name"].lower() == cmd_name]
             if len(matches) == 0:
                 try:
+                    # check if it's a default command
                     self._loop.create_task(self.handle_commands(msg))
                 except twitchio.ext.commands.errors.CommandNotFound:
+                    # nope, it's not:
                     self.logger.warning(f"!{cmd_name} not found, probably either removed or another bot")
             else:
+                # handle it if enabled
                 if self._is_command_enabled(matches[0]["name"], False):
                     self._loop.create_task(msg.channel.send(process_command(msg, matches[0]["return"])))
-                else:
-                    self._loop.create_task(msg.channel.send("command disabled"))
+                # TODO: deside to keep or not (removed for now)
+                # or not:
+                # else:
+                #     self._loop.create_task(msg.channel.send("command disabled"))
 
+    # misc saving stuff
     def _dump_quotes(self):
         with open("./assets/quotes.json", "w") as file:
             json.dump(self._quotes, file)
@@ -255,11 +273,13 @@ class Bot(commands.Bot):
         with open("./assets/giveaway.json", "w") as file:
             json.dump(self._giveaway_data, file, indent=2)
 
+    # this is used inconsistently lmao
     def _get(self, url, **kwargs):
         self.logger.debug(f"Getting url: {url}")
         return requests.get(url, headers={"Authorization": f"Bearer {self._token}",
                                           "Client-Id": self._config["client_id"]}, **kwargs).json()
 
+    # self-explanatory stuff
     def _get_mods(self):
         url = f"https://api.twitch.tv/helix/moderation/moderators?broadcaster_id={self._channel_user.id}"
         res = self._get(url)
@@ -270,36 +290,44 @@ class Bot(commands.Bot):
         res = self._get(url)
         return [user["user_login"] for user in res["data"]]
 
+    # gets a user and returns it as a twitchio.PartialUser object
     def _get_user(self, username):
         self.logger.debug(f"Attempting to get user {username}")
         try:
+            # get data
             data = self._get(f"https://api.twitch.tv/helix/users?login={username}")["data"][0]
             self.logger.debug(f"Successfully got user {data['display_name']} with ID {data['id']}")
+            # return user
             return self.create_user(data["id"], data["display_name"])
         except IndexError:
             # user does not exist
             self.logger.error(f"User {username} does not exist!")
             return None
         except KeyError:
+            # token err
             self.logger.error("Token not valid ig, wait a few seconds")
             raise Exception("Twitch token being dumb, wait a few seconds then run again")
 
     # async because there could be a large amount of subs for a streamer
     async def _get_subscribers(self):
-        # allow time for the token to be valid
         subs = {}
         params = {"broadcaster_id": str(self._channel_user.id)}
-        while True:
+        continue_ = True
+        while continue_:
             res = self._get("https://api.twitch.tv/helix/subscriptions", params=params)
             for chatter in res["data"]:
-                subs["name"] = int(chatter["tier"]) / 1000
+                subs["name"] = int(int(chatter["tier"]) / 1000)
             if res["pagination"] == {}:
-                break
+                continue_ = False
             else:
                 params["after"] = res["pagination"]["cursor"]
+        # add the streamer
         subs[self._channel_user.name] = 3
         self._subs = subs
 
+    # not async because this is needed
+    # should make it async though
+    # TODO so i come back
     def get_chatters(self):
         chatters = []
         params = {"broadcaster_id": str(self._channel_user.id), "moderator_id": str(self._user.id)}
@@ -312,19 +340,24 @@ class Bot(commands.Bot):
                 params["after"] = res["pagination"]["cursor"]
         return chatters
 
+    # worker thread to handle nice little things
     def _worker_thread(self):
         while self._running:
             now = datetime.now()
 
+            # check if new token needed (_refresh_token() handles saving to token.json)
             if (datetime.strptime(self._token_data["expires_in"], date_time_fmt) - now).total_seconds() < 120:
                 self.logger.debug("refreshing access token")
                 self._token = self._refresh_token()
 
+            # get the tasks and whatnot
             self._misc_data = self._server.get_data()
             for task in self._misc_data["repeating_tasks"]:
                 # later times are greater
+                # if it's time for a task:
                 if datetime.strptime(task["next"], date_time_fmt) < now:
                     self.logger.debug(f"Doing task with data: {task}")
+                    # do it
                     if task["type"] == "poll":
                         """
                         poll: {
@@ -352,18 +385,25 @@ class Bot(commands.Bot):
                         }
                         """
                         self.send_message(task["msg_body"])
+                    # update when its done next
                     task["next"] = (now + timedelta(minutes=task["freq_val"])).strftime(date_time_fmt)
 
+            # update stuff
             if (now - self._last_checked_chatters).total_seconds() > 60:
                 self.loop.create_task(self._get_subscribers())
                 self._vips = self._get_vips()
                 sub_names = list(self._subs.keys())
+                # get_chatters is not async because:
+                    # a) this is a thread
+                    # b) the chatters are needed here
+                # will probably make it async in 2.4
                 chatters = self.get_chatters()
 
                 with open("assets/watchtime.json") as file:
                     watchtime = json.load(file)
                 keys = list(watchtime.keys())
                 updated = []
+                # handle points updates
                 for chatter in chatters:
                     if chatter in keys:
                         if chatter in sub_names:
@@ -378,23 +418,29 @@ class Bot(commands.Bot):
                         watchtime[chatter] = {"watchtime": 5, "points": [2, 3, 5][self._subs[chatter] - 1]}
                     else:
                         watchtime[chatter] = {"watchtime": 5, "points": 1}
+                # update variables
                 self._watchtime = watchtime
                 self._dump_watchtime()
                 self._last_checked_chatters = now
 
+            # check for raffle
             if self._active_raffle and self._raffle_ends_at is not None:
+                # if done:
                 if self._raffle_ends_at < now:
                     self.logger.info("Raffle over, picking winners...")
                     if self._is_single_raffle:
                         try:
+                            # pick winner
                             winner = random.choice(self._raffle_participants)
                             points = int(raffle_points)
 
+                            # update points
                             if winner in list(self._watchtime.keys()):
                                 self._watchtime[winner]["points"] += points
                             else:
                                 self._watchtime[winner] = {"points": points, "watchtime": 1}
 
+                            # update variables & save to watchtime.json
                             self._dump_watchtime()
                             self.logger.info(f"{winner} won {points} points")
                             self.send_message(f"Raffle over! {winner} won {points} points!")
@@ -407,17 +453,20 @@ class Bot(commands.Bot):
                             amt_per_winner = int(raffle_points / amt_winners)
                             winners = []
 
+                            # i'm pretty sure this works but can't check bc i can only test with myself
                             for _ in range(amt_winners):
                                 tmp = random.choice(self._raffle_participants)
                                 winners.append(tmp)
                                 self._raffle_participants.pop(self._raffle_participants.index(tmp))
 
+                            # update points
                             for winner in winners:
                                 if winner in list(self._watchtime.keys()):
                                     self._watchtime[winner]["points"] += amt_per_winner
                                 else:
                                     self._watchtime[winner] = {"points": amt_per_winner, "watchtime": 1}
 
+                            # update variables & save to watchtime.json
                             self._dump_watchtime()
                             self.logger.info(f"Raffle over! {', '.join(winners)} each won {amt_per_winner} points!")
                             self.send_message(f"Raffle over! {', '.join(winners)} each won {amt_per_winner} points!")
@@ -427,9 +476,12 @@ class Bot(commands.Bot):
                     self._active_raffle = False
                     self._raffle_participants = []
 
+            # update giveaway data
             if self._server.get_giveaway_data() is not None or self._server.get_giveaway_data()["active"]:
                 self._giveaway_data = self._server.get_giveaway_data()
 
+            # if end giveaway, send message in chat
+            # might make it a few winners in the future (v2.4, v2.5?)
             if self._server.end_giveaway_:
                 data = self._server.giveaway_data
                 winner = data["winner"]
@@ -439,9 +491,10 @@ class Bot(commands.Bot):
                 try:
                     self.send_message(f"{winner} won the giveaway with a {round(100 * (data['entrants'][winner] / total_entries), 2)}% chance of winning! PogChamp")
                 except ZeroDivisionError:
-                    pass
+                    self.send_message("Error while ending giveaway: no participants!")
                 self._server.end_giveaway_ = False
 
+            # update timers
             if self._active_timers:
                 # avoid stuff from removing items from a list while iterating over it
                 tmp = copy.deepcopy(self._timer_end_times)
@@ -453,11 +506,13 @@ class Bot(commands.Bot):
                 self._active_timers = len(self._timer_end_times) > 0
 
     def _is_command_enabled(self, name, is_default):
+        # allow for command disabling
         return self._server.is_command_enabled(name, is_default)
 
     def _get_token(self):
+        # handle the yoinkage of a token
+        # need code --> get code --> get token
         if self._config == Bot.default_config and self._token_data == {}:
-            # no code, no token
             self.logger.debug("Waiting for Flask input...")
             print("Go to http://localhost:3000 to set client_id, client_secret, and channel name!")
             # get config --> get code
@@ -491,9 +546,8 @@ class Bot(commands.Bot):
             self._token_data = res
             dump_token(self._token_data)
             return self._token
-            # get code --> get token
+        # have code --> need token --> get token
         elif self._config != Bot.default_config and self._token_data == {}:
-            # have code --> get token
             url = f"""https://id.twitch.tv/oauth2/authorize
                         ?response_type=code
                         &client_id={self._config['client_id']}
@@ -518,8 +572,8 @@ class Bot(commands.Bot):
             self._token_data = res
             dump_token(self._token_data)
             return self._token
+        # no code but config --> get code --> get token
         elif self._config != Bot.default_config and "code" in list(self._token_data.keys()):
-            # no code but config --> get code --> get token
             code = self._token_data["code"]
             res = requests.post("https://id.twitch.tv/oauth2/token",
                                 data=f"client_id={self._config['client_id']}&client_secret={self._config['client_secret']}&code={code}&grant_type=authorization_code&redirect_uri=http://localhost:3000/token")
@@ -531,10 +585,11 @@ class Bot(commands.Bot):
             self._token_data = res
             dump_token(res)
             return self._token
+        # have refresh token --> get new token
         elif self._config != Bot.default_config and self._token_data != {}:
-            # have past token --> get new token
             return self._refresh_token()
 
+    # refresh the current token
     def _refresh_token(self):
         headers = {
             "Content-Type": "application/x-www-form-urlencoded",
@@ -552,6 +607,7 @@ class Bot(commands.Bot):
         dump_token(res)
         return res["access_token"]
 
+    # self explanatory stuff
     def _add_command(self, name, return_):
         self._server.add_command(name, return_, True)
 
@@ -564,11 +620,14 @@ class Bot(commands.Bot):
     def _disable_command(self, name, is_default):
         self._server.disable_command(name, is_default)
 
+    # handle announcement sending
     def send_announcement(self, msg, color: str | None = None):
         self.logger.info("sending an announcement")
+        # TODO: implement this logic everywhere (i forgot to lmao)
         if not self._running:
             self.logger.error("not running yet lmao")
-            raise Exception("cannot invoke send_message because the bot isn't running!")
+            raise Exception("cannot invoke send_announcement because the bot isn't running!")
+        # setup data
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Client-Id": self._config["client_id"],
@@ -578,13 +637,15 @@ class Bot(commands.Bot):
             "message": msg,
             "color": color
         }
+        # make request
         res = requests.post(
             f"https://api.twitch.tv/helix/chat/announcements?broadcaster_id={self._channel_user.id}&moderator_id={self._user.id}",
             headers=headers, json=json_)
         if res.status_code >= 300:
             self.logger.error(f"Failed to create announcement with status code: {res.status_code}")
-            print(f"Failed to create announcement with status code: {res.status_code} and text: {res.text}")
+            print(f"Failed to create announcement with error status code: {res.status_code} (https://http.cat/{res.status_code}) and text: {res.text}")
 
+    # handle shouting out
     def send_shoutout(self, user):
         headers = {
             "Authorization": f"Bearer {self._token}",
@@ -599,6 +660,7 @@ class Bot(commands.Bot):
             self.logger.error(f"Failed to create shoutout with status code: {res.status_code} and text {res.text}")
             print(f"Failed to create shoutout with status code: {res.status_code} and text {res.text}")
 
+    # handle message sending
     def send_message(self, content):
         if self._running:
             if self._channel is None:
@@ -608,6 +670,7 @@ class Bot(commands.Bot):
             self.logger.error("not running yet lmao")
             raise Exception("cannot invoke send_message because the bot isn't running!")
 
+    # handle poll creation
     def create_poll(self, title, options, duration=120, channel_points_enabled=False, channel_points_per_vote=100):
         headers = {
             "Authorization": f"Bearer {self._token}",
