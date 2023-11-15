@@ -8,6 +8,7 @@ import copy
 import json
 
 
+# set up logging and Flask
 app = Flask(__name__)
 CORS(app)
 logger = logging.getLogger("server")
@@ -24,6 +25,7 @@ def dump_giveaway(data):
         json.dump(data, file)
 
 
+# parse urls into nice, easy-to-use dictionaries
 def parse(url_):
     global logger
     logger.debug("Parsing URL: " + url_)
@@ -41,8 +43,9 @@ def parse(url_):
         return {}
 
 
+# cleans text to only allowed chars
 def clean(text):
-    allowed = "qwertuiopasdfghjklzxcvbnmQWETYUIOPASDFGHJKLZXCVBNM"
+    allowed = "qwertuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM"
     builder = ""
     for char in list(text):
         if char in allowed:
@@ -50,6 +53,8 @@ def clean(text):
     return builder
 
 
+# most of the @app.route functions are self-explanatory
+# pretty simple logic
 @app.route("/")
 def home():
     logger.info("Request on /")
@@ -57,6 +62,7 @@ def home():
     default = copy.deepcopy(instance.data["default_commands"])
     custom = copy.deepcopy(instance.data["custom_commands"])
 
+    # silly logic for enabling/disabling commands
     for cmd in default:
         cmd["checkbox"] = f'''<input type="checkbox" id="{cmd['name']}" onclick="send_('{cmd['name']}', true)"{' checked' if cmd['enabled'] else ''}>'''
     for cmd in custom:
@@ -101,6 +107,9 @@ def log_file():
         return file.read().replace("\n", "<br><br>")
 
 
+# might want to add backend validation
+# but this is a small app and won't be used by a lot of ppl, if anyone
+# if for some this reason gets popular i'll add it
 @app.route("/remove_repeating", methods=["POST"])
 def remove_repeating():
     logger.info("Request on /remove_repeating")
@@ -127,8 +136,9 @@ def update_enabled():
     inst = get_server_instance()
     params = parse(request.url)
     key = [key for key in list(params.keys()) if key != "is_default"][0]
-    # js passes the true/false as "true" or "false"
-    # python is True or False
+    # js fetch passes the true/false as "true" or "false" strings in the url
+    # eval("true".title()) == True
+    # eval("false".title()) == False
     params[key] = eval(params[key].title())
     if params[key]:
         inst.enable_command(key, params["is_default"])
@@ -206,6 +216,8 @@ def end_giveaway():
         return jsonify({"success": False, "msg": msg})
 
 
+# no global vars
+# such wow, vary fancy
 def get_server_instance():
     if Server.instance is None:
         Server.instance = Server()
@@ -242,6 +254,7 @@ class Server:
         self.cancel_giveaway_ = None
         self.end_giveaway_ = None
 
+    # most of these are self explanatory
     def set_config(self, config):
         self.config = config
 
