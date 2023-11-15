@@ -672,6 +672,7 @@ class Bot(commands.Bot):
 
     # handle poll creation
     def create_poll(self, title, options, duration=120, channel_points_enabled=False, channel_points_per_vote=100):
+        # misc data
         headers = {
             "Authorization": f"Bearer {self._token}",
             "Client-Id": self._config["client_id"],
@@ -690,6 +691,7 @@ class Bot(commands.Bot):
             self.logger.error(f"Failed to create poll with status code: {res.status_code}")
             print(f"Failed to create poll with status code: {res.status_code}")
 
+    # simple commands
     @commands.command()
     async def hello(self, ctx: commands.Context):
         self.logger.info(f"!hello called by {ctx.author.name}")
@@ -708,16 +710,23 @@ class Bot(commands.Bot):
             self.logger.info(f"!ping is disabled")
             self._loop.create_task(ctx.send("command disabled"))
 
+    # adds a quote to quotes.json
     @commands.command(aliases=("addquote", "aq"))
     async def add_quote(self, ctx: commands.Context):
         name = ctx.author.name
         self.logger.info(f"!addquote called by {name}")
+        # yay perms
         if name in self._vips or name in self._mods or name == self._channel_user.name:
             if not self._is_command_enabled("addquote", True):
                 self.logger.info(f"!addquote is disabled")
                 self._loop.create_task(ctx.send("command disabled"))
                 return
+            # get data
             msg = ctx.message.content.split()[1:]
+            if len(msg) == 0:
+                self.logger.info("Needs quote content")
+                self._loop.create_task(ctx.send("Needs quote content!"))
+                return
             data = {
                 "quoter": ctx.author.name,
                 "date": datetime.now().strftime(date_fmt),
@@ -725,6 +734,7 @@ class Bot(commands.Bot):
                 "quote": " ".join(msg),
                 "streamer": self._channel_user.name
             }
+            # save data
             self._quotes.append(data)
             self._dump_quotes()
             self.logger.info(f"added quote {data['num']}")
@@ -733,6 +743,7 @@ class Bot(commands.Bot):
             self.logger.info("user is powerless!")
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command <3"))
 
+    # command for yoinking a quote
     @commands.command(aliases=("q",))
     async def quote(self, ctx: commands.Context):
         self.logger.info(f"!quote called by {ctx.author.name}")
@@ -741,10 +752,12 @@ class Bot(commands.Bot):
             self._loop.create_task(ctx.send("command disabled"))
             return
         msg = ctx.message.content.split()[1:]
+        # random quote
         if len(msg) == 0:
             self._loop.create_task(ctx.send(random_quote(self._quotes, self._config["channel"])))
             return
         else:
+            # specific quote
             num = msg[0]
             try:
                 num = int(num) - 1
@@ -756,6 +769,7 @@ class Bot(commands.Bot):
                 self.logger.error(f"{num} > {len(self._quotes)}!")
                 self._loop.create_task(ctx.send(f"Only {len(self._quotes)} quotes found!"))
 
+    # handles shouting out someone
     @commands.command(aliases=("so",))
     async def shoutout(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -781,7 +795,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command <3"))
 
-    # add_command is a default twitchio command
+    # add_command is a default twitchio function, hence the _ at the end and the aliases
     @commands.command(aliases=("addcmd", "add_cmd", "add_command", "addcommand"))
     async def add_command_(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -797,6 +811,7 @@ class Bot(commands.Bot):
                 self._loop.create_task(ctx.send("Please specify the return value!"))
             else:
                 if args[0].lower() not in [cmd["name"].lower() for cmd in self._misc_data["custom_commands"]]:
+                    # validate and add
                     res = validate_command_syntax(ctx.message.content)
                     if res[0]:
                         self._add_command(args[0], " ".join(args[1:]))
@@ -808,7 +823,8 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command"))
 
-    # all the ways you could be wrong:
+    # handle removing a command
+    # all the ways you could be wrong (aliases):
     @commands.command(aliases=("rmvcmd", "rmv_cmd", "remove_cmd", "removecommand", "removecmd"))
     async def remove_command(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -828,6 +844,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command"))
 
+    # handle updating stuff
     async def _update_channel_info(self, game=None, language=None, title=None, tags=None, content_labels=None,
                                    content_label_ids=None, content_labels_enabled=None, branded_content=None):
         headers = {
@@ -855,11 +872,14 @@ class Bot(commands.Bot):
                 data["is_enabled"] = content_labels
         if branded_content is not None:
             data["is_branded_content"] = branded_content
+        # make the request
         res = requests.patch('https://api.twitch.tv/helix/channels', params=params, headers=headers, json=data)
         if res.status_code >= 300:
             self.logger.error(f"Failed to update channel config with code {res.status_code}")
+            print(f"Failed to update channel config with code {res.status_code}")
 
     # hehe
+    # update stream title
     @commands.command(aliases=("tit",))
     async def title(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -875,6 +895,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command"))
 
+    # update stream game
     @commands.command()
     async def game(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -895,6 +916,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command"))
 
+    # watchtime command
     @commands.command(aliases=("wt",))
     async def watchtime(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -903,6 +925,7 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
+        # waoooow
         if user in list(self._watchtime.keys()):
             time = self._watchtime[user]["watchtime"]
             hours = int((time - (time % 60)) / 60)
@@ -914,6 +937,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send(f"{user} has spent 0 minutes watching {self._channel_user.name}"))
 
+    # bot points
     @commands.command(aliases=("p",))
     async def points(self, ctx: commands.Context):
         user = ctx.message.author.name.lower()
@@ -923,22 +947,32 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
+        # if user specified
         if len(msg) != 0:
+            # this is a little bit of a mess
             user = msg[0].replace("@", "").lower()
             if user in list(self._watchtime.keys()):
+                # sort by points
                 sorted_ = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)
+                # get ranking
                 pos = sorted_.index(user)
+                # send message
                 self._loop.create_task(ctx.send(f"{user} has {self._watchtime[user]['points']} points (#{pos+1}/{len(sorted_)})"))
             else:
                 self._loop.create_task(ctx.send(f"{user} not found"))
+        # else
         else:
             if user in list(self._watchtime.keys()):
+                # sort by points
                 sorted_ = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)
+                # get ranking
                 pos = sorted_.index(user)
+                # send message
                 self._loop.create_task(ctx.send(f"{user} has {self._watchtime[user]['points']} points (#{pos+1}/{len(sorted_)})"))
             else:
                 self._loop.create_task(ctx.send(f"{user} not found"))
 
+    # yay gambling
     @commands.command()
     async def gamble(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -954,6 +988,7 @@ class Bot(commands.Bot):
             return
         if user in list(self._watchtime.keys()):
             try:
+                # i love input validation
                 points = self._watchtime[user]["points"]
                 if msg[1].lower() == "all":
                     amt = points
@@ -978,6 +1013,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send(f"{user} has no points to gamble!"))
 
+    # feeling generous?
     @commands.command(aliases=("gp", "give_points"))
     async def givepoints(self, ctx: commands.Context):
         user = ctx.message.author.name.replace("@", "").lower()
@@ -994,6 +1030,7 @@ class Bot(commands.Bot):
             self._loop.create_task(ctx.send("Please specify an amount of points to give!"))
             return
         if user in list(self._watchtime.keys()):
+            # more input validation!
             points = self._watchtime[user]["points"]
             user_ = msg[1].replace("@", "").lower()
             amt = msg[2]
@@ -1012,6 +1049,7 @@ class Bot(commands.Bot):
                     self._watchtime[user_.lower()]["points"] += amt
                 else:
                     self._watchtime[user_.lower()] = {"watchtime": 1, "points": amt}
+                # update and save
                 self._watchtime[user]["points"] -= amt
                 self._dump_watchtime()
                 self._loop.create_task(ctx.send(f"Successfully gave {user_} {amt} points"))
@@ -1020,6 +1058,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send(f"{user} has no points to give!"))
 
+    # mods feeling generous?
     @commands.command(aliases=("mgp", "mod_give_points"))
     async def modgivepoints(self, ctx: commands.Context):
         user = ctx.message.author.name.replace("@", "").lower()
@@ -1031,6 +1070,8 @@ class Bot(commands.Bot):
         if user not in self._mods and user != self._channel_user.name.lower():
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command <3"))
             return
+        # i love input validation so much
+        # not really though
         msg = ctx.message.content.split()
         if len(msg) == 1:
             self._loop.create_task(ctx.send("Please specify someone to give the points to!"))
@@ -1045,6 +1086,7 @@ class Bot(commands.Bot):
             if amt == 0:
                 self._loop.create_task(ctx.send("Cannot give 0 points!"))
                 return
+            # update and save
             if user_.lower() in list(self._watchtime.keys()):
                 self._watchtime[user_.lower()]["points"] += amt
             else:
@@ -1054,6 +1096,7 @@ class Bot(commands.Bot):
         except ValueError:
             self._loop.create_task(ctx.send(f"{amt} is not a valid integer!"))
 
+    # feeling lucky?
     @commands.command(aliases=("cf", "flip"))
     async def coinflip(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1063,6 +1106,7 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
+        # you know it, more input validation
         msg = ctx.message.content.split()
         if len(msg) == 1:
             self._loop.create_task(ctx.send("Please specify an amount to gamble!"))
@@ -1077,6 +1121,7 @@ class Bot(commands.Bot):
                 if amt > points:
                     self._loop.create_task(ctx.send(f"You only have {points} points to gamble!"))
                     return
+                # update and save
                 points -= amt
                 won = amt * random.choice(multipliers)
                 points += won
@@ -1093,6 +1138,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send(f"{user} has no points to gamble!"))
 
+    # did something bad?
     @commands.command(aliases=("tp", "take_points"))
     async def takepoints(self, ctx: commands.Context):
         user = ctx.message.author.name.replace("@", "").lower()
@@ -1104,6 +1150,8 @@ class Bot(commands.Bot):
         if user not in self._mods and user != ctx.channel.name:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command <3"))
             return
+        # you already know
+        # INPUT VALIDATION!!!!
         msg = ctx.message.content.split()
         if len(msg) == 1:
             self._loop.create_task(ctx.send("Please specify someone to take the points from!"))
@@ -1122,6 +1170,7 @@ class Bot(commands.Bot):
             if amt == 0:
                 self._loop.create_task(ctx.send("Cannot take 0 points!"))
                 return
+            # update and save
             if user_ in list(self._watchtime.keys()):
                 self._watchtime[user_]["points"] -= amt
             else:
@@ -1131,6 +1180,7 @@ class Bot(commands.Bot):
         except ValueError:
             self._loop.create_task(ctx.send(f"{amt} is not a valid integer!"))
 
+    # wanna know the top points-havers?
     @commands.command(aliases=("lb",))
     async def leaderboard(self, ctx: commands.Context):
         user = ctx.message.author.name.lower()
@@ -1139,12 +1189,16 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
+        # sort
         leaders = sorted(self._watchtime, key=lambda item: self._watchtime[item]["points"], reverse=True)[:5]
-        # yay one-liners
+        # yay one-liners (formats)
         builder = ", ".join(f"#{leaders.index(leader)+1}: {leader} with {self._watchtime[leader]['points']} points" for leader in leaders)
+        # send
         self.logger.debug("leaderboard string: " + builder)
         self._loop.create_task(ctx.send("Points leaderboard: " + builder))
 
+    # ooooo <3
+    # fun little command
     @commands.command()
     async def love(self, ctx: commands.Context):
         user = ctx.message.author.name.replace("@", "").lower()
@@ -1160,6 +1214,7 @@ class Bot(commands.Bot):
             return
         self._loop.create_task(ctx.send(f"There is {random.randint(0, 100)}% love detected between {user} and {msg[0]} <3"))
 
+    # consult the 8ball
     @commands.command(aliases=("8ball",))
     async def eightball(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1170,6 +1225,7 @@ class Bot(commands.Bot):
             return
         self._loop.create_task(ctx.send(random.choice(eight_ball_responses)))
 
+    # mod command syntax stuff
     @commands.command()
     async def syntax(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1183,6 +1239,7 @@ class Bot(commands.Bot):
         else:
             self._loop.create_task(ctx.send("<3 you don't have permission to use this command <3"))
 
+    # raffle off a few thousand points
     @commands.command()
     async def raffle(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1199,12 +1256,14 @@ class Bot(commands.Bot):
             self._loop.create_task(ctx.send("There is already an active raffle!"))
             return
         self.logger.info(f"New raffle started for {raffle_points} points")
+        # update raffle data
         self._raffle_ends_at = datetime.now() + timedelta(seconds=raffle_length)
         self._active_raffle = True
         self._is_single_raffle = False
         self._raffle_participants = []
         self._loop.create_task(ctx.send(f"New Multi-Raffle for {raffle_points} points! Type !join to join! Ends in 30 seconds! PogChamp"))
 
+    # nuh uh :3
     @commands.command(aliases=("cr", "cancel_raffle"))
     async def cancelraffle(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1216,12 +1275,18 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
-        self.logger.info(f"Cancelled currently active raffle")
+        if not self._active_raffle:
+            self.logger.info("No active raffle to cancel")
+            self._loop.create_task(ctx.send("No active raffle found!"))
+            return
+        # cancel currently active raffle
         self._active_raffle = False
         self._is_single_raffle = False
         self._raffle_participants = []
+        self.logger.info(f"Cancelled currently active raffle")
         self._loop.create_task(ctx.send(f"Raffle cancelled"))
 
+    # join the raffle
     @commands.command()
     async def join(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1235,6 +1300,7 @@ class Bot(commands.Bot):
         elif not self._active_raffle:
             self._loop.create_task(ctx.send("No active raffle found!"))
 
+    # single raffle
     @commands.command(aliases=("singleraffle", "single_raffle"))
     async def sraffle(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1253,6 +1319,7 @@ class Bot(commands.Bot):
         self._raffle_ends_at = datetime.now() + timedelta(seconds=raffle_length)
         self._loop.create_task(ctx.send(f"New Single-Raffle for {raffle_points} points! Type !join to join! PogChamp"))
 
+    # giveaway info
     @commands.command()
     async def giveaway(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1267,6 +1334,7 @@ class Bot(commands.Bot):
             return
         self._loop.create_task(ctx.send(self._giveaway_data["description"]))
 
+    # enter the giveaway
     @commands.command(aliases=("ticket",))
     async def enter(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1278,6 +1346,7 @@ class Bot(commands.Bot):
             self.logger.info("No active giveaway found!")
             self._loop.create_task(ctx.send("No active giveaway found!"))
             return
+        # yay input validation!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
         msg = ctx.message.content.lower().split()[1:]
         if len(msg) == 0:
             self._loop.create_task(ctx.send("Please specify an amount of tickets to buy!"))
@@ -1285,6 +1354,7 @@ class Bot(commands.Bot):
         if user not in list(self._watchtime.keys()):
             self._loop.create_task(ctx.send("You don't have any points!"))
             return
+        # get data
         user_points = self._watchtime[user]["points"]
         ticket_cost = self._giveaway_data["ticket_cost"]
         if user_points < ticket_cost:
@@ -1292,11 +1362,13 @@ class Bot(commands.Bot):
             return
         try:
             if msg[0] == "max":
+                # logic, waooow
                 tickets = (user_points - (user_points % ticket_cost)) / ticket_cost
             else:
                 tickets = int(msg[0])
                 if tickets <= 0:
                     self._loop.create_task(ctx.send("You must specify an amount of tickets greater than 0!"))
+                # max tickets possible
                 max_tickets = (user_points - (user_points % ticket_cost)) / ticket_cost
                 if max_tickets < tickets:
                     self._loop.create_task(ctx.send(f"You can only afford {int(max_tickets)} tickets!"))
@@ -1304,16 +1376,20 @@ class Bot(commands.Bot):
         except ValueError:
             self._loop.create_task(ctx.send("Invalid value for argument 'number'"))
             return
+        # actually by the tickets
         tickets = int(tickets)
         self._watchtime[user]["points"] -= (tickets * ticket_cost)
         if user in list(self._giveaway_data["entrants"].keys()):
             self._giveaway_data["entrants"][user] += tickets
         else:
             self._giveaway_data["entrants"][user] = tickets
+        # save the data
         self._dump_giveaway()
         self._dump_watchtime()
+        # confirmation message
         self._loop.create_task(ctx.send(f"Successfully purchased {tickets} tickets for a total of {int(self._giveaway_data['entrants'][user])} tickets"))
 
+    # timers, waoow
     @commands.command()
     async def timer(self, ctx: commands.Context):
         user = ctx.message.author.name
@@ -1325,6 +1401,7 @@ class Bot(commands.Bot):
             self.logger.info("Command disabled")
             self._loop.create_task(ctx.send("command disabled"))
             return
+        # more input validation!
         time = ctx.message.content.split()[1:]
         if len(time) == 0:
             self.logger.info("length of time needed")
@@ -1339,6 +1416,9 @@ class Bot(commands.Bot):
                 return
             self._active_timers = True
             timer_num = 0
+            # uhhhhhh
+            # sketchy logic
+            # TODO: fix lmao
             while True:
                 if timer_num not in [timer[1] for timer in self._timer_end_times]:
                     break
@@ -1351,6 +1431,7 @@ class Bot(commands.Bot):
             self._loop.create_task(ctx.send("Invalid value for argument 'time'"))
             return
 
+    # cancel timers (nuh uh :3)
     @commands.command(aliases=("canceltimer", "cts", "ct", "cancel_timer", "cancel_timers"))
     async def canceltimers(self, ctx: commands.Context):
         user = ctx.message.author.name
